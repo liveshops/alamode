@@ -259,6 +259,38 @@ curl -I https://brandname.com/products.json
 
 ---
 
+## Product Taxonomy
+
+**New Feature**: All products are automatically classified using [Shopify's Standard Product Taxonomy](https://github.com/Shopify/product-taxonomy).
+
+### Benefits
+- ✅ Industry-standard categories (same as Shopify, Amazon, Google Shopping)
+- ✅ Better filtering & search ("Show me all Midi Dresses")
+- ✅ Consistent categorization across all brands
+- ✅ 1,000+ specific categories for fashion
+
+### Auto-Classification
+Products are automatically categorized when synced:
+- "Lola Cream Slip Midi Dress" → **Midi Dresses**
+- "High-Waisted Wide Leg Jeans" → **Jeans**
+- "Ribbed Crop Tank Top" → **Tank Tops**
+
+### Filtering by Category
+```sql
+-- Get all dresses
+SELECT * FROM products WHERE taxonomy_category_name = 'Dresses';
+
+-- Get specific subcategory
+SELECT * FROM products WHERE taxonomy_id = 'gid://shopify/TaxonomyCategory/aa-1-4-2';
+
+-- Count products per category
+SELECT * FROM category_product_counts;
+```
+
+**Full implementation details**: See [TAXONOMY_IMPLEMENTATION.md](TAXONOMY_IMPLEMENTATION.md)
+
+---
+
 ## File Structure
 
 ### Main Files (Keep These)

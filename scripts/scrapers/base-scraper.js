@@ -5,6 +5,8 @@
  * Provides common functionality for rate limiting, error handling, and data normalization.
  */
 
+const { classifyProduct } = require('./taxonomy-classifier');
+
 class BaseScraper {
   constructor(brand, supabase) {
     this.brand = brand;
@@ -69,11 +71,22 @@ class BaseScraper {
    * Normalize product data to our schema
    */
   normalizeProduct(rawProduct) {
+    const productName = this.cleanText(rawProduct.name || rawProduct.title);
+    const productDescription = this.cleanText(rawProduct.description || '');
+    const productType = rawProduct.productType || rawProduct.type || rawProduct.category || '';
+
+    // Classify product using Shopify taxonomy
+    const taxonomy = classifyProduct({
+      name: productName,
+      product_type: productType,
+      description: productDescription
+    });
+
     return {
       brand_id: this.brand.id,
       external_id: String(rawProduct.id || rawProduct.sku || ''),
-      name: this.cleanText(rawProduct.name || rawProduct.title),
-      description: this.cleanText(rawProduct.description || ''),
+      name: productName,
+      description: productDescription,
       price: this.parsePrice(rawProduct.price),
       sale_price: rawProduct.salePrice ? this.parsePrice(rawProduct.salePrice) : null,
       currency: rawProduct.currency || 'USD',
@@ -82,7 +95,9 @@ class BaseScraper {
       product_url: rawProduct.url || rawProduct.link || '',
       variants: rawProduct.variants || [],
       is_available: rawProduct.available !== false && rawProduct.inStock !== false,
-      last_checked_at: new Date().toISOString()
+      last_checked_at: new Date().toISOString(),
+      // Add taxonomy classification
+      ...(taxonomy || {})
     };
   }
 
