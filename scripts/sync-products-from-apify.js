@@ -1,0 +1,362 @@
+/**
+ * Sync Products from Apify to Supabase
+ * 
+ * This script fetches product data from Apify datasets and syncs them to Supabase.
+ * It handles:
+ * - Shopify data format transformation
+ * - Category mapping
+ * - Variant storage
+ * - Product deduplication via external_id
+ * - Image URL management (CDN links for Shopify)
+ * 
+ * Usage: node scripts/sync-products-from-apify.js <brand-slug>
+ * Example: node scripts/sync-products-from-apify.js rad-swim
+ */
+
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client with service role key (for admin operations)
+const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// Category mapping: maps source category names to our normalized categories
+const CATEGORY_MAPPING = {
+  'swimwear': 'swimwear',
+  'swim': 'swimwear',
+  'one-piece': 'one-piece',
+  'bikini': 'bikinis',
+  'bikinis': 'bikinis',
+  'tankini': 'one-piece',
+  'cover-up': 'cover-ups',
+  'cover-ups': 'cover-ups',
+  'rash guard': 'rash-guards',
+  'rash-guard': 'rash-guards',
+};
+
+/**
+ * Transform Apify Shopify data to our product schema
+ */
+function transformApifyProduct(apifyProduct, brandId) {
+  const source = apifyProduct.source || {};
+  const variants = apifyProduct.variants || [];
+  const medias = apifyProduct.medias || [];
+  
+  // Get primary price from first variant
+  const primaryVariant = variants[0];
+  const currentPrice = primaryVariant?.price?.current || 0;
+  const previousPrice = primaryVariant?.price?.previous || 0;
+  
+  // Convert price from cents to dollars
+  const price = (currentPrice / 100).toFixed(2);
+  const salePrice = previousPrice > 0 ? (previousPrice / 100).toFixed(2) : null;
+  
+  // Get images (use CDN URLs directly for Shopify)
+  const imageUrl = medias[0]?.url || '';
+  const additionalImages = medias.slice(1).map(m => m.url).filter(Boolean);
+  
+  // Clean HTML from description
+  const description = apifyProduct.description
+    ? apifyProduct.description.replace(/<[^>]*>/g, '').trim()
+    : '';
+  
+  // Determine if product is in stock (check if any variant is in stock)
+  const isAvailable = variants.some(v => v.price?.stockStatus === 'InStock');
+  
+  return {
+    brand_id: brandId,
+    external_id: source.id || apifyProduct.id,
+    name: apifyProduct.title || 'Untitled Product',
+    description: description,
+    price: parseFloat(price),
+    sale_price: salePrice ? parseFloat(salePrice) : null,
+    currency: source.currency || 'USD',
+    image_url: imageUrl,
+    additional_images: additionalImages,
+    product_url: source.canonicalUrl || '',
+    variants: variants.map(v => ({
+      id: v.id,
+      title: v.title,
+      sku: v.sku || '',
+      options: v.options || [],
+      price: {
+        current: v.price?.current || 0,
+        previous: v.price?.previous || 0,
+        stockStatus: v.price?.stockStatus || 'OutOfStock'
+      }
+    })),
+    is_available: isAvailable,
+    last_checked_at: new Date().toISOString()
+  };
+}
+
+/**
+ * Get category IDs from category tags/names
+ */
+async function getCategoryIds(categoryNames) {
+  const categoryIds = [];
+  
+  for (const name of categoryNames) {
+    const normalizedName = name.toLowerCase().trim();
+    const mappedSlug = CATEGORY_MAPPING[normalizedName];
+    
+    if (mappedSlug) {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', mappedSlug)
+        .single();
+      
+      if (data && !error) {
+        categoryIds.push(data.id);
+      }
+    }
+  }
+  
+  return categoryIds;
+}
+
+/**
+ * Upsert product and handle category associations
+ */
+async function upsertProduct(productData, categoryIds) {
+  // First, try to find existing product by brand_id + external_id
+  const { data: existing } = await supabase
+    .from('products')
+    .select('id')
+    .eq('brand_id', productData.brand_id)
+    .eq('external_id', productData.external_id)
+    .single();
+  
+  let productId;
+  
+  if (existing) {
+    // Update existing product
+    const { data, error } = await supabase
+      .from('products')
+      .update(productData)
+      .eq('id', existing.id)
+      .select('id')
+      .single();
+    
+    if (error) {
+      console.error(`Error updating product ${productData.name}:`, error.message);
+      return { success: false, isNew: false };
+    }
+    
+    productId = data.id;
+  } else {
+    // Insert new product
+    const { data, error } = await supabase
+      .from('products')
+      .insert(productData)
+      .select('id')
+      .single();
+    
+    if (error) {
+      console.error(`Error inserting product ${productData.name}:`, error.message);
+      return { success: false, isNew: true };
+    }
+    
+    productId = data.id;
+  }
+  
+  // Handle category associations
+  if (categoryIds.length > 0) {
+    // Delete existing associations
+    await supabase
+      .from('product_categories')
+      .delete()
+      .eq('product_id', productId);
+    
+    // Insert new associations
+    const categoryAssociations = categoryIds.map(catId => ({
+      product_id: productId,
+      category_id: catId
+    }));
+    
+    await supabase
+      .from('product_categories')
+      .insert(categoryAssociations);
+  }
+  
+  return { success: true, isNew: !existing, productId };
+}
+
+/**
+ * Main sync function
+ */
+async function syncBrandProducts(brandSlug) {
+  console.log(`\n🚀 Starting product sync for brand: ${brandSlug}\n`);
+  
+  const startTime = Date.now();
+  
+  // 1. Get brand configuration from database
+  const { data: brand, error: brandError } = await supabase
+    .from('brands')
+    .select('*')
+    .eq('slug', brandSlug)
+    .single();
+  
+  if (brandError || !brand) {
+    console.error(`❌ Brand not found: ${brandSlug}`);
+    return;
+  }
+  
+  if (!brand.is_active) {
+    console.log(`⏸️  Brand is inactive, skipping sync`);
+    return;
+  }
+  
+  console.log(`✅ Found brand: ${brand.name}`);
+  
+  // 2. Get Apify configuration
+  const config = brand.scraper_config || {};
+  const apifyDatasetId = config.apify_dataset_id;
+  const apifyToken = process.env.APIFY_API_TOKEN;
+  
+  if (!apifyDatasetId) {
+    console.error(`❌ No Apify dataset ID configured for ${brand.name}`);
+    console.log(`   Update the brand with: UPDATE brands SET scraper_config = '{"apify_dataset_id": "your-dataset-id"}' WHERE slug = '${brandSlug}';`);
+    return;
+  }
+  
+  if (!apifyToken) {
+    console.error(`❌ APIFY_API_TOKEN not found in .env file`);
+    return;
+  }
+  
+  // 3. Create scrape log
+  const { data: logData } = await supabase
+    .from('product_scrape_logs')
+    .insert({
+      brand_id: brand.id,
+      status: 'running',
+      started_at: new Date().toISOString(),
+      apify_dataset_id: apifyDatasetId
+    })
+    .select('id')
+    .single();
+  
+  const logId = logData?.id;
+  
+  // 4. Fetch products from Apify
+  console.log(`📥 Fetching products from Apify dataset: ${apifyDatasetId}`);
+  
+  const apifyUrl = `https://api.apify.com/v2/datasets/${apifyDatasetId}/items?token=${apifyToken}`;
+  
+  let apifyProducts = [];
+  try {
+    const response = await fetch(apifyUrl);
+    if (!response.ok) {
+      throw new Error(`Apify API error: ${response.status} ${response.statusText}`);
+    }
+    apifyProducts = await response.json();
+    console.log(`✅ Fetched ${apifyProducts.length} products from Apify\n`);
+  } catch (error) {
+    console.error(`❌ Error fetching from Apify:`, error.message);
+    
+    // Update log with error
+    if (logId) {
+      await supabase
+        .from('product_scrape_logs')
+        .update({
+          status: 'failed',
+          error_message: error.message,
+          completed_at: new Date().toISOString(),
+          execution_time_seconds: Math.floor((Date.now() - startTime) / 1000)
+        })
+        .eq('id', logId);
+    }
+    
+    return;
+  }
+  
+  // 5. Process each product
+  let productsAdded = 0;
+  let productsUpdated = 0;
+  let productsFailed = 0;
+  
+  for (const apifyProduct of apifyProducts) {
+    try {
+      // Transform product data
+      const productData = transformApifyProduct(apifyProduct, brand.id);
+      
+      // Get category IDs from product tags/categories
+      const sourceCats = [
+        ...(apifyProduct.categories || []),
+        ...(apifyProduct.tags || [])
+      ];
+      const categoryIds = await getCategoryIds(sourceCats);
+      
+      // Upsert product
+      const result = await upsertProduct(productData, categoryIds);
+      
+      if (result.success) {
+        if (result.isNew) {
+          productsAdded++;
+          console.log(`  ✅ Added: ${productData.name}`);
+        } else {
+          productsUpdated++;
+          console.log(`  🔄 Updated: ${productData.name}`);
+        }
+      } else {
+        productsFailed++;
+      }
+      
+    } catch (error) {
+      console.error(`  ❌ Error processing product:`, error.message);
+      productsFailed++;
+    }
+  }
+  
+  // 6. Update brand's last_synced_at
+  await supabase
+    .from('brands')
+    .update({ last_synced_at: new Date().toISOString() })
+    .eq('id', brand.id);
+  
+  // 7. Update scrape log
+  const executionTime = Math.floor((Date.now() - startTime) / 1000);
+  
+  if (logId) {
+    await supabase
+      .from('product_scrape_logs')
+      .update({
+        status: productsFailed === 0 ? 'success' : 'partial',
+        products_added: productsAdded,
+        products_updated: productsUpdated,
+        completed_at: new Date().toISOString(),
+        execution_time_seconds: executionTime
+      })
+      .eq('id', logId);
+  }
+  
+  // 8. Print summary
+  console.log(`\n📊 Sync Summary for ${brand.name}`);
+  console.log(`   ➕ Products added: ${productsAdded}`);
+  console.log(`   🔄 Products updated: ${productsUpdated}`);
+  console.log(`   ❌ Products failed: ${productsFailed}`);
+  console.log(`   ⏱️  Execution time: ${executionTime}s\n`);
+}
+
+// Run the script
+const brandSlug = process.argv[2];
+
+if (!brandSlug) {
+  console.error('Usage: node scripts/sync-products-from-apify.js <brand-slug>');
+  console.error('Example: node scripts/sync-products-from-apify.js rad-swim');
+  process.exit(1);
+}
+
+syncBrandProducts(brandSlug)
+  .then(() => {
+    console.log('✅ Sync complete!');
+    process.exit(0);
+  })
+  .catch(error => {
+    console.error('❌ Fatal error:', error);
+    process.exit(1);
+  });
