@@ -286,53 +286,10 @@ class BaseScraper {
   }
 
   /**
-   * Assign categories to product
+   * Note: Category assignment is now handled automatically via taxonomy
+   * classification in the normalizeProduct() method. Products are auto-tagged
+   * with Shopify taxonomy categories based on their name and description.
    */
-  async assignCategories(productId, categoryNames) {
-    const categoryIds = await this.getCategoryIds(categoryNames);
-    
-    if (categoryIds.length === 0) return;
-
-    // Delete existing associations
-    await this.supabase
-      .from('product_categories')
-      .delete()
-      .eq('product_id', productId);
-
-    // Insert new associations
-    const associations = categoryIds.map(catId => ({
-      product_id: productId,
-      category_id: catId
-    }));
-
-    await this.supabase
-      .from('product_categories')
-      .insert(associations);
-  }
-
-  /**
-   * Get category IDs from category names
-   */
-  async getCategoryIds(categoryNames) {
-    const categoryIds = [];
-    
-    for (const name of categoryNames) {
-      const normalizedName = name.toLowerCase().trim();
-      
-      const { data } = await this.supabase
-        .from('categories')
-        .select('id')
-        .ilike('name', `%${normalizedName}%`)
-        .limit(1)
-        .single();
-      
-      if (data) {
-        categoryIds.push(data.id);
-      }
-    }
-    
-    return [...new Set(categoryIds)]; // Remove duplicates
-  }
 }
 
 module.exports = BaseScraper;

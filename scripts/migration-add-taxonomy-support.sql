@@ -3,6 +3,16 @@
 -- Purpose: Integrate Shopify's standard product taxonomy for better categorization
 
 -- ============================================
+-- 0. Drop old categorization system
+-- ============================================
+
+-- Drop old product_categories junction table (no longer needed)
+DROP TABLE IF EXISTS product_categories CASCADE;
+
+-- Note: We're replacing the old many-to-many category system
+-- with a simpler, more powerful taxonomy-based system
+
+-- ============================================
 -- 1. Add taxonomy columns to products table
 -- ============================================
 
