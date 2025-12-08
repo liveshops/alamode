@@ -134,19 +134,20 @@ LIMIT 20;
 ### ✅ Confirmed Working (9 brands)
 Start with these - they work perfectly:
 - **Edikted** ⭐ (2,500+ products - BEST FOR TESTING)
-- Damson Madder
-- Miaou
-- Doen
-- Design By Si
-- Steele
-- DISSH
-- Rumored
-- With Jean
+- Damson Madder 394
+- Miaou 375
+- Doen 714
+- Design By Si - brand not found
+- Steele - didn't work
+- DISSH 1690
+- Rumored - didn't work
+- With Jean - 387
+- Rad Swim 225
 
 ### 🟡 Needs Testing (2 brands)
 Should work but not verified:
-- Sisters & Seekers
-- Handover
+- Sisters & Seekers - didn't work
+- Handover - didn't work
 
 ### 🔴 Requires Apify/Custom (11 brands)
 Don't work with basic scraper:

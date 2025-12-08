@@ -1,39 +1,61 @@
-# Welcome to your Expo app 👋
+# a la Mode - Fashion Discovery App 👗
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Fashion drops app where users discover the latest products from their favorite brands.
 
-## Get started
+**Status**: Active Development | 7 brands synced | 6,285+ products
 
-1. Install dependencies
+## Tech Stack
 
-   ```bash
-   npm install
-   ```
+- **Frontend**: Expo React Native
+- **Backend**: Supabase (PostgreSQL + Auth)
+- **Scraping**: Custom Shopify scrapers
+- **Platform**: iOS & Android
 
-2. Start the app
+## Quick Start
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+### 1. Install Dependencies
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Configure Environment
+Copy `.env.example` to `.env` and add your Supabase credentials.
+
+### 3. Run the App
+```bash
+npx expo start
+```
+
+### 4. Set Up Brand Scraping
+See **[SCRAPING_GUIDE.md](SCRAPING_GUIDE.md)** for complete instructions.
+
+## Key Features
+
+- 🔐 User authentication & profiles
+- 👗 Product discovery feed
+- ❤️ Like products and follow brands
+- 🔍 Search products, brands, and users
+- 🛍️ Brand-specific product pages
+- 🤖 Automated product scraping from 7+ brands
+
+## Documentation
+
+**Main Guide**: [SCRAPING_GUIDE.md](SCRAPING_GUIDE.md) - Complete brand scraping guide
+
+**Other Guides**:
+- [FIXING_FOLLOWER_COUNTS.md](FIXING_FOLLOWER_COUNTS.md) - Fix follower count triggers
+- [archive_docs/](archive_docs/) - Older documentation (reference only)
+
+## Project Structure
+
+```
+/app                  # React Native screens (file-based routing)
+/components           # Reusable components
+/contexts             # Auth context
+/scripts              # Database & scraping scripts
+  /scrapers           # Brand scraping logic
+/utils                # Supabase client
+```
 
 ## Learn more
 
