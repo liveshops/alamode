@@ -22,7 +22,7 @@ async function reclassifyProducts() {
   console.log('📥 Fetching products from database...');
   const { data: products, error: fetchError } = await supabase
     .from('products')
-    .select('id, name, category, description')
+    .select('id, name, description')
     .order('created_at', { ascending: false });
 
   if (fetchError) {
@@ -46,7 +46,7 @@ async function reclassifyProducts() {
   for (const product of products) {
     const classification = classifyProduct({
       name: product.name,
-      product_type: product.category,
+      product_type: '',
       description: product.description
     });
 
