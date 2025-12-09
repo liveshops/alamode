@@ -44,8 +44,10 @@ class ApifyEcommerceScraper extends BaseScraper {
       this.log('Starting Apify actor with config:', JSON.stringify(runInput, null, 2));
 
       // Call Apify API to start the actor
+      // Note: Apify API uses ~ instead of / in actor IDs
+      const actorId = this.ecommerceScraperActorId.replace('/', '~');
       const runResponse = await fetch(
-        `https://api.apify.com/v2/acts/${this.ecommerceScraperActorId}/runs`,
+        `https://api.apify.com/v2/acts/${actorId}/runs`,
         {
           method: 'POST',
           headers: {
