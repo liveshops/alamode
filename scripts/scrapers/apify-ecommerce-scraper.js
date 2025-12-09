@@ -33,12 +33,13 @@ class ApifyEcommerceScraper extends BaseScraper {
       const startUrls = config.start_urls || this.getDefaultStartUrls();
 
       // Start Apify actor run with E-commerce scraper input format
-      // This actor requires specific field names - see Apify console for schema
+      // Match the exact format from Apify console
       const runInput = {
-        categoryListingUrls: startUrls.map(url => ({ url })),  // Format as array of objects
+        listingUrls: startUrls.map(url => ({ url })),  // Use listingUrls not categoryListingUrls
         scrapeMode: 'AUTO',  // Must be uppercase: AUTO, BROWSER, or HTTP
-        includeAdditionalProperties: true,  // Get extra product data
-        totalMaximumProducts: config.max_products || 100,
+        additionalProperties: true,  // Get extra product data
+        additionalReviewProperties: false,  // Don't need reviews
+        scrapeInfluencerProducts: false,  // Don't scrape influencer products
         proxyConfiguration: {
           useApifyProxy: true
         }
@@ -105,7 +106,7 @@ class ApifyEcommerceScraper extends BaseScraper {
   /**
    * Wait for Apify run to complete and get results
    */
-  async waitForApifyRun(runId, maxWaitTime = 300000) {
+  async waitForApifyRun(runId, maxWaitTime = 600000) {
     const startTime = Date.now();
     const pollInterval = 5000; // Check every 5 seconds
 
@@ -167,21 +168,35 @@ class ApifyEcommerceScraper extends BaseScraper {
   parseProducts(results) {
     const products = [];
 
+    // Debug: log first item to see structure
+    if (results.length > 0) {
+      const sample = results[0];
+      this.log(`\n=== SAMPLE PRODUCT DATA ===`);
+      this.log(`Keys: ${Object.keys(sample).join(', ')}`);
+      this.log(`name: ${sample.name}`);
+      this.log(`mpn: ${sample.mpn}`);
+      this.log(`url: ${sample.url}`);
+      this.log(`image: ${sample.image}`);
+      this.log(`offers: ${JSON.stringify(sample.offers)}`);
+      this.log(`additionalProperties keys: ${sample.additionalProperties ? Object.keys(sample.additionalProperties).join(', ') : 'NONE'}`);
+      this.log(`=== END SAMPLE ===\n`);
+    }
+
     for (const item of results) {
       try {
         // E-commerce scraper returns structured product data
-        const product = {
-          id: item.mpn || item.sku || item.additionalProperties?.sku,
+        // Map to format expected by normalizeProduct in base-scraper
+        const rawProduct = {
+          id: item.mpn || item.additionalProperties?.sku || item.sku,
+          sku: item.mpn || item.additionalProperties?.sku,
           title: item.name,
           name: item.name,
           description: item.description || '',
           price: item.offers?.price || '0',
-          salePrice: null,
+          salePrice: item.offers?.salePrice || null,
           currency: item.offers?.priceCurrency || 'USD',
           image: item.image,
-          imageUrl: item.image,
           images: item.additionalProperties?.images?.map(img => img.url) || [item.image],
-          additionalImages: item.additionalProperties?.images?.slice(1).map(img => img.url) || [],
           url: item.url,
           available: true,
           category: '',
@@ -189,7 +204,7 @@ class ApifyEcommerceScraper extends BaseScraper {
           variants: item.additionalProperties?.variants || []
         };
 
-        products.push(this.normalizeProduct(product));
+        products.push(this.normalizeProduct(rawProduct));
       } catch (error) {
         this.log(`Error parsing product: ${error.message}`, 'error');
       }
