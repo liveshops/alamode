@@ -295,10 +295,14 @@ class HTMLScraper extends BaseScraper {
   }
 }
 
+// Import Apify-based scrapers
+const FreePeopleScraper = require('./free-people-scraper');
+
 // Export all custom scrapers
 module.exports = {
   ZaraScraper,
   AritziaScraper,
   HMScraper,
-  HTMLScraper
+  HTMLScraper,
+  FreePeopleScraper
 };

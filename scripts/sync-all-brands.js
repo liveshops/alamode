@@ -13,7 +13,7 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const ShopifyScraper = require('./scrapers/shopify-scraper');
-const { ZaraScraper, AritziaScraper, HMScraper, HTMLScraper } = require('./scrapers/custom-scrapers');
+const { ZaraScraper, AritziaScraper, HMScraper, HTMLScraper, FreePeopleScraper } = require('./scrapers/custom-scrapers');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -26,6 +26,7 @@ const CUSTOM_SCRAPERS = {
   'zara': ZaraScraper,
   'aritzia': AritziaScraper,
   'hm': HMScraper,
+  'free-people': FreePeopleScraper,
   'stradivarius': HTMLScraper,
   'cult-mia': HTMLScraper,
   'guizio': HTMLScraper,
