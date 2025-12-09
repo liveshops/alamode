@@ -15,11 +15,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Your dataset URL
-const DATASET_URL = 'https://api.apify.com/v2/datasets/3GW6eMacWqJ8S4kC0/items?token=apify_api_PGYUceSubXc1qulf8SsLsgn74ZO92a2PYb3t';
+// Get dataset ID from command line argument or use default
+const datasetId = process.argv[2] || '3GW6eMacWqJ8S4kC0';
+const DATASET_URL = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${process.env.APIFY_API_TOKEN}`;
 
 async function importDataset() {
-  console.log('🏷️  Importing Free People products from Apify dataset...\n');
+  console.log('🏷️  Importing Free People products from Apify dataset...');
+  console.log(`📦 Dataset ID: ${datasetId}\n`);
 
   try {
     // Get brand ID

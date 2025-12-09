@@ -33,9 +33,12 @@ class ApifyEcommerceScraper extends BaseScraper {
       const startUrls = config.start_urls || this.getDefaultStartUrls();
 
       // Start Apify actor run with E-commerce scraper input format
+      // This actor requires specific field names - see Apify console for schema
       const runInput = {
-        startUrls: startUrls,
-        maxItems: config.max_products || 100,
+        categoryListingUrls: startUrls.map(url => ({ url })),  // Format as array of objects
+        scrapeMode: 'AUTO',  // Must be uppercase: AUTO, BROWSER, or HTTP
+        includeAdditionalProperties: true,  // Get extra product data
+        totalMaximumProducts: config.max_products || 100,
         proxyConfiguration: {
           useApifyProxy: true
         }
@@ -59,7 +62,9 @@ class ApifyEcommerceScraper extends BaseScraper {
       );
 
       if (!runResponse.ok) {
-        throw new Error(`Apify API error: ${runResponse.statusText}`);
+        const errorBody = await runResponse.text();
+        this.log(`API Error Response: ${errorBody}`, 'error');
+        throw new Error(`Apify API error: ${runResponse.statusText} - ${errorBody}`);
       }
 
       const run = await runResponse.json();
