@@ -69,63 +69,7 @@ class ZaraScraper extends BaseScraper {
   }
 }
 
-/**
- * Aritzia Scraper
- * Uses their product API
- */
-class AritziaScraper extends BaseScraper {
-  async fetchProducts() {
-    this.log('Starting Aritzia product fetch');
-    
-    try {
-      // Aritzia has an API endpoint for products
-      const url = 'https://www.aritzia.com/api/products/new';
-      
-      const response = await this.makeRequest(url, {
-        headers: {
-          'Accept': 'application/json',
-          'Referer': 'https://www.aritzia.com/en/clothing/new'
-        }
-      });
-      
-      const data = await response.json();
-      const products = [];
-      
-      if (data.products) {
-        for (const product of data.products) {
-          products.push(this.normalizeAritviaProduct(product));
-        }
-      }
-      
-      this.log(`Fetched ${products.length} products from Aritzia`, 'success');
-      return products;
-    } catch (error) {
-      this.log(`Error: ${error.message}`, 'error');
-      return [];
-    }
-  }
-
-  normalizeAritviaProduct(aritviaProduct) {
-    return {
-      id: aritviaProduct.productId || aritviaProduct.id,
-      sku: aritviaProduct.sku || aritviaProduct.productId,
-      title: aritviaProduct.name || aritviaProduct.displayName,
-      name: aritviaProduct.name || aritviaProduct.displayName,
-      description: aritviaProduct.description || '',
-      price: parseFloat(aritviaProduct.price?.regular || aritviaProduct.price || 0),
-      salePrice: aritviaProduct.price?.sale ? parseFloat(aritviaProduct.price.sale) : null,
-      currency: aritviaProduct.currency || 'USD',
-      image: aritviaProduct.image?.url || aritviaProduct.imageUrl || '',
-      imageUrl: aritviaProduct.image?.url || aritviaProduct.imageUrl || '',
-      images: aritviaProduct.images || [],
-      additionalImages: aritviaProduct.images?.slice(1) || [],
-      url: `https://www.aritzia.com${aritviaProduct.url || ''}`,
-      available: aritviaProduct.available !== false,
-      category: aritviaProduct.category || aritviaProduct.productType || '',
-      tags: aritviaProduct.tags || []
-    };
-  }
-}
+// Aritzia Scraper - moved to separate file (uses Apify like Free People)
 
 /**
  * H&M Scraper
@@ -297,6 +241,7 @@ class HTMLScraper extends BaseScraper {
 
 // Import Apify-based scrapers
 const FreePeopleScraper = require('./free-people-scraper');
+const AritziaScraper = require('./aritzia-scraper');
 
 // Export all custom scrapers
 module.exports = {
