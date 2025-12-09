@@ -84,7 +84,6 @@ async function importDataset() {
           image_url: imageUrl,
           additional_images: additionalImages,
           product_url: productUrl,
-          is_available: true,
           ...taxonomy
         };
 

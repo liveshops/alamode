@@ -73,7 +73,6 @@ async function importDataset() {
           image_url: item.image || item.imageUrl,
           additional_images: item.additionalProperties?.images?.map(img => img.url) || [],
           product_url: item.url || item.productUrl,
-          available: true,
           variants: item.additionalProperties?.variants || []
         };
 
