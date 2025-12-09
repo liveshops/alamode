@@ -186,18 +186,31 @@ class ApifyEcommerceScraper extends BaseScraper {
       try {
         // E-commerce scraper returns structured product data
         // Map to format expected by normalizeProduct in base-scraper
+        
+        // Log if critical fields are missing
+        if (!item.name || !item.url || !item.image || (!item.mpn && !item.sku)) {
+          this.log(`⚠️  Product with missing fields: ${JSON.stringify({
+            name: item.name,
+            url: item.url,
+            image: item.image,
+            mpn: item.mpn,
+            sku: item.sku,
+            keys: Object.keys(item)
+          })}`, 'warning');
+        }
+        
         const rawProduct = {
-          id: item.mpn || item.additionalProperties?.sku || item.sku,
-          sku: item.mpn || item.additionalProperties?.sku,
+          id: item.mpn || item.additionalProperties?.sku || item.sku || item.productID || item.identifier,
+          sku: item.mpn || item.additionalProperties?.sku || item.sku,
           title: item.name,
           name: item.name,
           description: item.description || '',
-          price: item.offers?.price || '0',
+          price: item.offers?.price || item.price || '0',
           salePrice: item.offers?.salePrice || null,
           currency: item.offers?.priceCurrency || 'USD',
-          image: item.image,
-          images: item.additionalProperties?.images?.map(img => img.url) || [item.image],
-          url: item.url,
+          image: item.image || item.imageUrl || item.thumbnail,
+          images: item.additionalProperties?.images?.map(img => img.url) || (item.image ? [item.image] : []),
+          url: item.url || item.productUrl || item.link,
           available: true,
           category: '',
           tags: [],
