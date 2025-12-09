@@ -1,49 +1,51 @@
 /**
- * Apify Cloudflare Scraper
+ * Apify E-commerce Scraper
  * 
- * Uses Apify's Cloudflare bypass scraper to handle bot-protected sites
+ * Uses Apify's E-commerce Scraping Tool to scrape bot-protected sites
  * like Free People, Urban Outfitters, etc.
+ * 
+ * Actor: apify/e-commerce-scraping-tool
  */
 
 const BaseScraper = require('./base-scraper');
 
-class ApifyCloudFlareScraper extends BaseScraper {
+class ApifyEcommerceScraper extends BaseScraper {
   constructor(brand, supabase) {
     super(brand, supabase);
     this.apifyApiKey = process.env.APIFY_API_TOKEN;
-    this.cloudflareScraperActorId = 'neatrat/cloudflare-scraper';
+    // Use Apify's E-commerce Scraper - works great for Free People!
+    this.ecommerceScraperActorId = 'apify/e-commerce-scraping-tool';
   }
 
   /**
-   * Fetch products using Apify's Cloudflare bypass scraper
+   * Fetch products using Apify's E-commerce scraper
    */
   async fetchProducts() {
     if (!this.apifyApiKey) {
       throw new Error('APIFY_API_TOKEN not found in environment variables');
     }
 
-    this.log('Starting Apify Cloudflare scraper...');
+    this.log('Starting Apify E-commerce scraper...');
 
     try {
       // Get scraper config from brand
       const config = this.brand.scraper_config || {};
       const startUrls = config.start_urls || this.getDefaultStartUrls();
 
-      // Start Apify actor run
+      // Start Apify actor run with E-commerce scraper input format
       const runInput = {
-        startUrls: startUrls.map(url => ({ url })),
+        startUrls: startUrls,
+        maxItems: config.max_products || 100,
         proxyConfiguration: {
           useApifyProxy: true
-        },
-        maxConcurrency: 5,
-        maxRequestsPerCrawl: config.max_products || 500
+        }
       };
 
       this.log('Starting Apify actor with config:', JSON.stringify(runInput, null, 2));
 
       // Call Apify API to start the actor
       const runResponse = await fetch(
-        `https://api.apify.com/v2/acts/${this.cloudflareScraperActorId}/runs`,
+        `https://api.apify.com/v2/acts/${this.ecommerceScraperActorId}/runs`,
         {
           method: 'POST',
           headers: {
@@ -152,30 +154,42 @@ class ApifyCloudFlareScraper extends BaseScraper {
   }
 
   /**
-   * Parse products from Apify results
-   * Override this method for brand-specific parsing
+   * Parse products from Apify E-commerce scraper results
+   * Results are already in structured JSON format
    */
   parseProducts(results) {
     const products = [];
 
-    for (const page of results) {
-      // Extract products from the page HTML
-      const pageProducts = this.extractProductsFromHtml(page.html || page.body, page.url);
-      products.push(...pageProducts);
+    for (const item of results) {
+      try {
+        // E-commerce scraper returns structured product data
+        const product = {
+          id: item.mpn || item.sku || item.additionalProperties?.sku,
+          title: item.name,
+          name: item.name,
+          description: item.description || '',
+          price: item.offers?.price || '0',
+          salePrice: null,
+          currency: item.offers?.priceCurrency || 'USD',
+          image: item.image,
+          imageUrl: item.image,
+          images: item.additionalProperties?.images?.map(img => img.url) || [item.image],
+          additionalImages: item.additionalProperties?.images?.slice(1).map(img => img.url) || [],
+          url: item.url,
+          available: true,
+          category: '',
+          tags: [],
+          variants: item.additionalProperties?.variants || []
+        };
+
+        products.push(this.normalizeProduct(product));
+      } catch (error) {
+        this.log(`Error parsing product: ${error.message}`, 'error');
+      }
     }
 
     return products;
   }
-
-  /**
-   * Extract products from HTML
-   * This is brand-specific and should be overridden
-   */
-  extractProductsFromHtml(html, pageUrl) {
-    // Default implementation - override in brand-specific scrapers
-    this.log('Warning: Using default HTML parser - implement brand-specific parser', 'warning');
-    return [];
-  }
 }
 
-module.exports = ApifyCloudFlareScraper;
+module.exports = ApifyEcommerceScraper;
