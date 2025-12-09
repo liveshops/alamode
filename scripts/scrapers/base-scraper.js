@@ -273,10 +273,8 @@ class BaseScraper {
         isNew = true;
       }
 
-      // Handle category associations
-      if (categoryNames.length > 0) {
-        await this.assignCategories(productId, categoryNames);
-      }
+      // Category classification is now handled automatically in normalizeProduct()
+      // via the taxonomy classifier - no need for manual assignment
 
       return { success: true, productId, isNew };
     } catch (error) {
