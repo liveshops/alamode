@@ -34,9 +34,11 @@ export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductC
               size={18} 
               color={product.is_liked ? "#fff" : "#000"} 
             />
-            <Text style={[styles.likeCount, product.is_liked && styles.likeCountLiked]}>
-              {product.like_count}
-            </Text>
+            {product.like_count >= 1 && (
+              <Text style={[styles.likeCount, product.is_liked && styles.likeCountLiked]}>
+                {product.like_count}
+              </Text>
+            )}
           </View>
         </TouchableOpacity>
       </View>

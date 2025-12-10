@@ -40,14 +40,7 @@ export default function ProductDetailScreen() {
     ? [product.image_url, ...(product.additional_images || [])]
     : [];
 
-  // Refetch on screen focus to get latest like state
-  useFocusEffect(
-    useCallback(() => {
-      fetchProduct();
-    }, [id, user])
-  );
-
-  const fetchProduct = async () => {
+  const fetchProduct = useCallback(async () => {
     if (!id) return;
 
     try {
@@ -89,7 +82,14 @@ export default function ProductDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, user]);
+
+  // Refetch on screen focus to get latest like state
+  useFocusEffect(
+    useCallback(() => {
+      fetchProduct();
+    }, [fetchProduct])
+  );
 
   const handleToggleLike = async () => {
     if (!user || !product) return;
@@ -223,9 +223,11 @@ export default function ProductDetailScreen() {
                 size={20} 
                 color={isLiked ? "#fff" : "#000"} 
               />
-              <Text style={[styles.likeCountText, isLiked && styles.likeCountTextLiked]}>
-                {likeCount}
-              </Text>
+              {likeCount >= 1 && (
+                <Text style={[styles.likeCountText, isLiked && styles.likeCountTextLiked]}>
+                  {likeCount}
+                </Text>
+              )}
             </View>
           </TouchableOpacity>
         </View>

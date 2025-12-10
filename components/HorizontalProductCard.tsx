@@ -64,7 +64,18 @@ export function HorizontalProductCard({
             onLike();
           }}
           activeOpacity={0.7}>
-          <Ionicons name="heart" size={24} color="#000" />
+          <View style={[styles.heartBadge, product.is_liked && styles.heartBadgeLiked]}>
+            <Ionicons 
+              name={product.is_liked ? "heart" : "heart-outline"} 
+              size={18} 
+              color={product.is_liked ? "#fff" : "#000"} 
+            />
+            {product.like_count >= 1 && (
+              <Text style={[styles.likeCount, product.is_liked && styles.likeCountLiked]}>
+                {product.like_count}
+              </Text>
+            )}
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.buyButton} onPress={handleBuy} activeOpacity={0.8}>
@@ -128,6 +139,31 @@ const styles = StyleSheet.create({
   },
   heartButton: {
     padding: 4,
+  },
+  heartBadge: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  heartBadgeLiked: {
+    backgroundColor: '#000',
+  },
+  likeCount: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  likeCountLiked: {
+    color: '#fff',
   },
   buyButton: {
     paddingHorizontal: 24,
