@@ -5,9 +5,10 @@
  * Automatically selects the appropriate scraper for each brand.
  * 
  * Usage:
- *   node scripts/sync-all-brands.js              # Sync all active brands
- *   node scripts/sync-all-brands.js <brand-slug> # Sync specific brand
- *   node scripts/sync-all-brands.js --new-only   # Only sync new arrivals
+ *   node scripts/sync-all-brands.js                 # Sync all active brands
+ *   node scripts/sync-all-brands.js <brand-slug>    # Sync specific brand
+ *   node scripts/sync-all-brands.js --new-only      # Only sync new arrivals
+ *   node scripts/sync-all-brands.js --shopify-only  # Only sync Shopify brands (FREE!)
  */
 
 require('dotenv').config();
@@ -209,11 +210,16 @@ async function main() {
   const args = process.argv.slice(2);
   const specificBrand = args.find(arg => !arg.startsWith('--'));
   const newOnly = args.includes('--new-only');
+  const shopifyOnly = args.includes('--shopify-only');
   
   console.log('\n🌟 a la Mode - Brand Product Sync\n');
   
   if (newOnly) {
     console.log('📅 Mode: New arrivals only (last 30 days)\n');
+  }
+  
+  if (shopifyOnly) {
+    console.log('🛍️  Mode: Shopify brands only (FREE - no Apify costs!)\n');
   }
   
   try {
@@ -234,12 +240,19 @@ async function main() {
       
       brandsToSync = [brand];
     } else {
-      // Sync all active brands
-      const { data: brands, error } = await supabase
+      // Sync all active brands (or filter by platform)
+      let query = supabase
         .from('brands')
         .select('*')
         .eq('is_active', true)
         .order('name');
+      
+      // Filter by Shopify platform if requested
+      if (shopifyOnly) {
+        query = query.eq('platform', 'shopify');
+      }
+      
+      const { data: brands, error } = await query;
       
       if (error) {
         console.error('❌ Error fetching brands:', error.message);
