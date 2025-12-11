@@ -4,16 +4,16 @@ import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    FlatList,
+    Image,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,11 +26,16 @@ export default function ProfileScreen() {
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [likedItemsCount, setLikedItemsCount] = useState(0);
+  const [followedBrandsCount, setFollowedBrandsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
+  const scrollPositionRef = useRef(0);
+  const shouldRestoreScroll = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
+      shouldRestoreScroll.current = scrollPositionRef.current > 0;
       fetchProfileData();
     }, [user])
   );
@@ -56,6 +61,14 @@ export default function ProfileScreen() {
         setFollowingCount(profileData.following_count || 0);
         setLikedItemsCount(profileData.liked_items_count || 0);
       }
+
+      // Fetch count of brands user follows
+      const { count: brandsCount } = await supabase
+        .from('user_follows_brands')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id);
+
+      setFollowedBrandsCount(brandsCount || 0);
 
       // Fetch liked products
       const { data: likedData, error } = await supabase
@@ -87,6 +100,16 @@ export default function ProfileScreen() {
       console.error('Error fetching profile data:', err);
     } finally {
       setLoading(false);
+      // Restore scroll after data loads
+      if (shouldRestoreScroll.current) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({
+            offset: scrollPositionRef.current,
+            animated: false,
+          });
+          shouldRestoreScroll.current = false;
+        }, 300);
+      }
     }
   };
 
@@ -163,12 +186,17 @@ export default function ProfileScreen() {
       </View>
 
       <FlatList
+        ref={flatListRef}
         data={likedProducts}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.productRow}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          scrollPositionRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
         }
@@ -199,10 +227,13 @@ export default function ProfileScreen() {
                 <Text style={styles.statLabel}>Followers</Text>
               </View>
               <View style={styles.statDivider} />
-              <View style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push(`/user/${user?.id}/following`)}
+                activeOpacity={0.7}>
                 <Text style={styles.statNumber}>{followingCount}</Text>
                 <Text style={styles.statLabel}>Following</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Edit Profile Button */}
@@ -221,13 +252,25 @@ export default function ProfileScreen() {
               <Text style={styles.logoutButtonText}>Log Out</Text>
             </TouchableOpacity>
 
-            {/* Liked Products Header */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Liked Products</Text>
-              <View style={styles.likedCountBadge}>
-                <Ionicons name="heart" size={16} color="#fff" />
-                <Text style={styles.likedCountText}>{likedItemsCount}</Text>
+            {/* Category Tabs */}
+            <View style={styles.categoryTabs}>
+              <View style={styles.categoryTab}>
+                <View style={styles.categoryBadge}>
+                  <Ionicons name="heart" size={16} color="#fff" />
+                  <Text style={styles.categoryBadgeText}>{likedItemsCount}</Text>
+                </View>
+                <Text style={styles.categoryTabText}>Liked Products</Text>
               </View>
+              <TouchableOpacity
+                style={styles.categoryTab}
+                onPress={() => router.push(`/user/${user?.id}/brands`)}
+                activeOpacity={0.7}>
+                <View style={styles.categoryBadge}>
+                  <Ionicons name="heart" size={16} color="#fff" />
+                  <Text style={styles.categoryBadgeText}>{followedBrandsCount}</Text>
+                </View>
+                <Text style={styles.categoryTabText}>Favorite Brands</Text>
+              </TouchableOpacity>
             </View>
           </View>
         }
@@ -372,6 +415,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#666',
+  },
+  categoryTabs: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    marginTop: 24,
+    marginBottom: 24,
+    gap: 12,
+  },
+  categoryTab: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  categoryBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  categoryTabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#000',
   },
   sectionHeader: {
     flexDirection: 'row',

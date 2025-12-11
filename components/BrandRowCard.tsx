@@ -19,6 +19,7 @@ interface BrandRowCardProps {
   brandName: string;
   brandSlug: string;
   isFollowing: boolean;
+  followerCount: number;
   products: Product[];
   onBrandPress: () => void;
   onToggleFollow: () => void;
@@ -30,6 +31,7 @@ export function BrandRowCard({
   brandName,
   brandSlug,
   isFollowing,
+  followerCount,
   products,
   onBrandPress,
   onToggleFollow,
@@ -52,11 +54,26 @@ export function BrandRowCard({
             }}
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons
-              name={isFollowing ? 'heart' : 'heart-outline'}
-              size={24}
-              color="#000"
-            />
+            <View
+              style={[
+                styles.brandHeartBadge,
+                isFollowing && styles.brandHeartBadgeLiked,
+              ]}>
+              <Ionicons
+                name={isFollowing ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isFollowing ? '#fff' : '#000'}
+              />
+              {followerCount >= 1 && (
+                <Text
+                  style={[
+                    styles.brandFollowerCount,
+                    isFollowing && styles.brandFollowerCountLiked,
+                  ]}>
+                  {followerCount}
+                </Text>
+              )}
+            </View>
           </TouchableOpacity>
         </TouchableOpacity>
 
@@ -100,6 +117,15 @@ export function BrandRowCard({
                   size={18}
                   color={product.is_liked ? '#fff' : '#000'}
                 />
+                {product.like_count >= 1 && (
+                  <Text
+                    style={[
+                      styles.likeCount,
+                      product.is_liked && styles.likeCountLiked,
+                    ]}>
+                    {product.like_count}
+                  </Text>
+                )}
               </View>
             </TouchableOpacity>
           </TouchableOpacity>
@@ -156,8 +182,11 @@ const styles = StyleSheet.create({
   heartBadge: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -166,5 +195,38 @@ const styles = StyleSheet.create({
   },
   heartBadgeLiked: {
     backgroundColor: '#000',
+  },
+  likeCount: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  likeCountLiked: {
+    color: '#fff',
+  },
+  brandHeartBadge: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  brandHeartBadgeLiked: {
+    backgroundColor: '#000',
+  },
+  brandFollowerCount: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  brandFollowerCountLiked: {
+    color: '#fff',
   },
 });

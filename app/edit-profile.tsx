@@ -4,17 +4,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -25,6 +25,8 @@ export default function EditProfileScreen() {
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [bio, setBio] = useState('');
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -32,6 +34,8 @@ export default function EditProfileScreen() {
     if (profile) {
       setAvatarUrl(profile.avatar_url);
       setBio(profile.bio || '');
+      setUsername(profile.username || '');
+      setDisplayName(profile.display_name || '');
     }
   }, [profile]);
 
@@ -116,16 +120,56 @@ export default function EditProfileScreen() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !profile) return;
+
+    // Validate username
+    const trimmedUsername = username.trim().toLowerCase();
+    if (!trimmedUsername) {
+      Alert.alert('Error', 'Username is required');
+      return;
+    }
+    if (trimmedUsername.length < 3) {
+      Alert.alert('Error', 'Username must be at least 3 characters');
+      return;
+    }
+    if (!/^[a-z0-9_]+$/.test(trimmedUsername)) {
+      Alert.alert('Error', 'Username can only contain letters, numbers, and underscores');
+      return;
+    }
+
+    // Validate display name
+    const trimmedDisplayName = displayName.trim();
+    if (!trimmedDisplayName) {
+      Alert.alert('Error', 'Display name is required');
+      return;
+    }
 
     try {
       setSaving(true);
+
+      // Check if username is taken (if changed)
+      if (trimmedUsername !== profile.username) {
+        const { data: existingUser } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', trimmedUsername)
+          .neq('id', user.id)
+          .maybeSingle();
+
+        if (existingUser) {
+          Alert.alert('Error', 'Username is already taken');
+          setSaving(false);
+          return;
+        }
+      }
 
       const { error } = await supabase
         .from('profiles')
         .update({
           avatar_url: avatarUrl,
           bio: bio.trim() || null,
+          username: trimmedUsername,
+          display_name: trimmedDisplayName,
         })
         .eq('id', user.id);
 
@@ -204,18 +248,32 @@ export default function EditProfileScreen() {
         {/* Profile Info */}
         <View style={styles.section}>
           <Text style={styles.label}>Username</Text>
-          <View style={styles.disabledInput}>
-            <Text style={styles.disabledText}>@{profile.username}</Text>
-          </View>
-          <Text style={styles.helpText}>Username cannot be changed</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="username"
+            placeholderTextColor="#999"
+            value={username}
+            onChangeText={(text) => setUsername(text.toLowerCase())}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={30}
+          />
+          <Text style={styles.helpText}>
+            Letters, numbers, and underscores only. Minimum 3 characters.
+          </Text>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.label}>Display Name</Text>
-          <View style={styles.disabledInput}>
-            <Text style={styles.disabledText}>{profile.display_name}</Text>
-          </View>
-          <Text style={styles.helpText}>Display name cannot be changed</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Display Name"
+            placeholderTextColor="#999"
+            value={displayName}
+            onChangeText={setDisplayName}
+            maxLength={50}
+          />
+          <Text style={styles.helpText}>Your public display name</Text>
         </View>
 
         <View style={styles.section}>
@@ -319,16 +377,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: '#333',
   },
-  disabledInput: {
+  input: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
     padding: 12,
-    backgroundColor: '#f5f5f5',
-  },
-  disabledText: {
     fontSize: 16,
-    color: '#999',
+    backgroundColor: '#fff',
   },
   bioInput: {
     borderWidth: 1,

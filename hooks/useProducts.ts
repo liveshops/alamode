@@ -26,13 +26,16 @@ export interface Product {
   is_liked?: boolean;
 }
 
-export function useProducts() {
+export function useProducts(initialLimit = 20) {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (loadMore = false) => {
     if (!user) {
       setProducts([]);
       setLoading(false);
@@ -40,62 +43,54 @@ export function useProducts() {
     }
 
     try {
-      setLoading(true);
+      if (loadMore) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setOffset(0);
+        setHasMore(true);
+      }
       setError(null);
 
-      // Get brands the user follows
-      const { data: followedBrands, error: followError } = await supabase
-        .from('user_follows_brands')
-        .select('brand_id')
-        .eq('user_id', user.id);
+      const currentOffset = loadMore ? offset : 0;
 
-      if (followError) throw followError;
-
-      if (!followedBrands || followedBrands.length === 0) {
-        setProducts([]);
-        setLoading(false);
-        return;
-      }
-
-      const brandIds = followedBrands.map((fb) => fb.brand_id);
-
-      // Fetch products from followed brands
+      // Use optimized database function with pagination
       const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select(
-          `
-          *,
-          brand:brands(id, name, slug, logo_url)
-        `
-        )
-        .in('brand_id', brandIds)
-        .eq('is_available', true)
-        .order('created_at', { ascending: false });
+        .rpc('get_user_feed', {
+          p_user_id: user.id,
+          p_limit: initialLimit,
+          p_offset: currentOffset
+        });
 
       if (productsError) throw productsError;
 
-      // Check which products are liked by the user
-      const { data: likedProducts, error: likedError } = await supabase
-        .from('user_likes_products')
-        .select('product_id')
-        .eq('user_id', user.id);
-
-      if (likedError) throw likedError;
-
-      const likedProductIds = new Set(likedProducts?.map((lp) => lp.product_id) || []);
-
-      // Add is_liked property to products
-      const productsWithLikes = (productsData || []).map((product) => ({
+      // Map to expected format
+      const productsWithBrand = (productsData || []).map((product: any) => ({
         ...product,
-        is_liked: likedProductIds.has(product.id),
+        brand: {
+          id: product.brand_id,
+          name: product.brand_name,
+          slug: product.brand_slug,
+          logo_url: product.brand_logo_url,
+        },
       }));
 
-      setProducts(productsWithLikes);
+      if (loadMore) {
+        setProducts((prev) => [...prev, ...productsWithBrand]);
+        setOffset(currentOffset + productsWithBrand.length);
+      } else {
+        setProducts(productsWithBrand);
+        setOffset(productsWithBrand.length);
+      }
+
+      // If we got fewer items than requested, we've reached the end
+      setHasMore(productsWithBrand.length === initialLimit);
     } catch (err) {
       console.error('Error fetching products:', err);
       setError(err instanceof Error ? err.message : 'Failed to load products');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -160,11 +155,20 @@ export function useProducts() {
     }
   };
 
+  const loadMore = () => {
+    if (!loadingMore && hasMore) {
+      fetchProducts(true);
+    }
+  };
+
   return {
     products,
     loading,
+    loadingMore,
     error,
-    refetch: fetchProducts,
+    hasMore,
+    refetch: () => fetchProducts(false),
+    loadMore,
     toggleLike,
   };
 }

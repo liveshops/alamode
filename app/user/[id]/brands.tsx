@@ -2,15 +2,17 @@ import { BrandRowCard } from '@/components/BrandRowCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -23,11 +25,13 @@ interface BrandWithProducts {
   products: Product[];
 }
 
-export default function ShopScreen() {
+export default function UserBrandsScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
+  const [userName, setUserName] = useState('');
   const [brands, setBrands] = useState<BrandWithProducts[]>([]);
   const [followedBrandIds, setFollowedBrandIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -39,48 +43,102 @@ export default function ShopScreen() {
   useFocusEffect(
     useCallback(() => {
       shouldRestoreScroll.current = scrollPositionRef.current > 0;
-      fetchBrands();
-    }, [user])
+      fetchUserBrands();
+    }, [id, user])
   );
 
-  const fetchBrands = async () => {
+  const fetchUserBrands = async () => {
+    if (!id || !user) return;
+
     try {
       setLoading(true);
 
-      // Use optimized database function that limits products per brand
-      const { data: brandsData, error: brandsError } = await supabase
-        .rpc('get_shop_brands', {
-          p_user_id: user?.id || null,
-          p_products_per_brand: 6
-        });
+      // Fetch user's display name
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('id', id)
+        .single();
+
+      if (userData) {
+        setUserName(userData.display_name);
+      }
+
+      // Fetch brands this user follows with their products
+      const { data: followedBrands, error: brandsError } = await supabase
+        .from('user_follows_brands')
+        .select(
+          `
+          brand_id,
+          brands (
+            id,
+            name,
+            slug,
+            logo_url,
+            follower_count
+          )
+        `
+        )
+        .eq('user_id', id);
 
       if (brandsError) throw brandsError;
 
-      // Process brands data - products are already included as JSONB
-      const brandsWithProducts = (brandsData || []).map((brand: any) => ({
-        id: brand.id,
-        name: brand.name,
-        slug: brand.slug,
-        logo_url: brand.logo_url,
-        follower_count: brand.follower_count,
-        products: brand.products || [],
-      }));
+      const brandIds = followedBrands?.map((f: any) => f.brand_id) || [];
+
+      // Fetch products for each brand
+      const brandsWithProducts: BrandWithProducts[] = [];
+      for (const item of followedBrands || []) {
+        const brand = Array.isArray(item.brands) ? item.brands[0] : item.brands;
+        if (!brand) continue;
+
+        const { data: productsData } = await supabase
+          .from('products')
+          .select('*')
+          .eq('brand_id', brand.id)
+          .order('like_count', { ascending: false })
+          .limit(10);
+
+        // Check which products the current user has liked
+        let productsWithLikes = productsData || [];
+        if (user) {
+          const productIds = productsData?.map((p) => p.id) || [];
+          const { data: likedProducts } = await supabase
+            .from('user_likes_products')
+            .select('product_id')
+            .eq('user_id', user.id)
+            .in('product_id', productIds);
+
+          const likedProductIds = new Set(likedProducts?.map((l) => l.product_id) || []);
+          productsWithLikes = (productsData || []).map((product) => ({
+            ...product,
+            is_liked: likedProductIds.has(product.id),
+          }));
+        }
+
+        brandsWithProducts.push({
+          id: brand.id,
+          name: brand.name,
+          slug: brand.slug,
+          logo_url: brand.logo_url,
+          follower_count: brand.follower_count,
+          products: productsWithLikes,
+        });
+      }
 
       setBrands(brandsWithProducts);
 
-      // Set followed brands from the is_following field returned by the function
+      // Fetch current user's followed brands
       if (user) {
-        const followedIds = new Set<string>(
-          brandsWithProducts
-            .filter((b: any) => brandsData?.find((bd: any) => bd.id === b.id)?.is_following)
-            .map((b: any) => b.id as string)
-        );
+        const { data: myFollowedBrands } = await supabase
+          .from('user_follows_brands')
+          .select('brand_id')
+          .eq('user_id', user.id);
+
+        const followedIds = new Set(myFollowedBrands?.map((f) => f.brand_id) || []);
         setFollowedBrandIds(followedIds);
-      } else {
-        setFollowedBrandIds(new Set());
       }
     } catch (err) {
-      console.error('Error fetching brands:', err);
+      console.error('Error fetching user brands:', err);
     } finally {
       setLoading(false);
       // Restore scroll after data loads
@@ -98,7 +156,7 @@ export default function ShopScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchBrands();
+    await fetchUserBrands();
     setRefreshing(false);
   };
 
@@ -120,13 +178,15 @@ export default function ShopScreen() {
 
     // Update follower count optimistically
     setBrands((prev) =>
-      prev.map((b) =>
-        b.id === brandId
+      prev.map((brand) =>
+        brand.id === brandId
           ? {
-              ...b,
-              follower_count: wasFollowing ? b.follower_count - 1 : b.follower_count + 1,
+              ...brand,
+              follower_count: wasFollowing
+                ? Math.max(0, brand.follower_count - 1)
+                : brand.follower_count + 1,
             }
-          : b
+          : brand
       )
     );
 
@@ -138,14 +198,10 @@ export default function ShopScreen() {
           .eq('user_id', user.id)
           .eq('brand_id', brandId);
       } else {
-        const { error } = await supabase
-          .from('user_follows_brands')
-          .upsert(
-            { user_id: user.id, brand_id: brandId },
-            { onConflict: 'user_id,brand_id', ignoreDuplicates: true }
-          );
-
-        if (error) throw error;
+        await supabase.from('user_follows_brands').upsert(
+          { user_id: user.id, brand_id: brandId },
+          { onConflict: 'user_id,brand_id', ignoreDuplicates: true }
+        );
       }
     } catch (err) {
       console.error('Error toggling follow:', err);
@@ -159,22 +215,23 @@ export default function ShopScreen() {
         }
         return newSet;
       });
-
       setBrands((prev) =>
-        prev.map((b) =>
-          b.id === brandId
+        prev.map((brand) =>
+          brand.id === brandId
             ? {
-                ...b,
-                follower_count: wasFollowing ? b.follower_count + 1 : b.follower_count - 1,
+                ...brand,
+                follower_count: wasFollowing
+                  ? brand.follower_count + 1
+                  : Math.max(0, brand.follower_count - 1),
               }
-            : b
+            : brand
         )
       );
     }
   };
 
-  const handleBrandPress = (brandSlug: string) => {
-    router.push(`/brand/${brandSlug}`);
+  const handleBrandPress = (slug: string) => {
+    router.push(`/brand/${slug}`);
   };
 
   const handleProductPress = (productId: string) => {
@@ -184,40 +241,42 @@ export default function ShopScreen() {
   const handleToggleLike = async (productId: string) => {
     if (!user) return;
 
-    // Find the product in brands
-    let product: Product | undefined;
-    let brandId: string | undefined;
-    
+    // Find the product across all brands
+    let targetBrand: BrandWithProducts | undefined;
+    let targetProduct: Product | undefined;
+
     for (const brand of brands) {
-      const foundProduct = brand.products.find((p) => p.id === productId);
-      if (foundProduct) {
-        product = foundProduct;
-        brandId = brand.id;
+      const product = brand.products.find((p) => p.id === productId);
+      if (product) {
+        targetBrand = brand;
+        targetProduct = product;
         break;
       }
     }
 
-    if (!product || !brandId) return;
+    if (!targetBrand || !targetProduct) return;
 
-    const wasLiked = product.is_liked;
+    const wasLiked = targetProduct.is_liked;
 
     // Optimistic update
     setBrands((prev) =>
-      prev.map((b) =>
-        b.id === brandId
+      prev.map((brand) =>
+        brand.id === targetBrand.id
           ? {
-              ...b,
-              products: b.products.map((p) =>
+              ...brand,
+              products: brand.products.map((p) =>
                 p.id === productId
                   ? {
                       ...p,
                       is_liked: !wasLiked,
-                      like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
+                      like_count: wasLiked
+                        ? Math.max(0, p.like_count - 1)
+                        : p.like_count + 1,
                     }
                   : p
               ),
             }
-          : b
+          : brand
       )
     );
 
@@ -229,24 +288,20 @@ export default function ShopScreen() {
           .eq('user_id', user.id)
           .eq('product_id', productId);
       } else {
-        const { error } = await supabase
-          .from('user_likes_products')
-          .upsert(
-            { user_id: user.id, product_id: productId },
-            { onConflict: 'user_id,product_id', ignoreDuplicates: true }
-          );
-
-        if (error) throw error;
+        await supabase.from('user_likes_products').upsert(
+          { user_id: user.id, product_id: productId },
+          { onConflict: 'user_id,product_id', ignoreDuplicates: true }
+        );
       }
     } catch (err) {
       console.error('Error toggling like:', err);
       // Revert on error
       setBrands((prev) =>
-        prev.map((b) =>
-          b.id === brandId
+        prev.map((brand) =>
+          brand.id === targetBrand!.id
             ? {
-                ...b,
-                products: b.products.map((p) =>
+                ...brand,
+                products: brand.products.map((p) =>
                   p.id === productId
                     ? {
                         ...p,
@@ -256,15 +311,15 @@ export default function ShopScreen() {
                     : p
                 ),
               }
-            : b
+            : brand
         )
       );
     }
   };
 
-  if (loading && !refreshing) {
+  if (loading && brands.length === 0) {
     return (
-      <View style={[styles.centerContainer, { paddingTop: insets.top }]}>
+      <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#000" />
       </View>
     );
@@ -274,10 +329,15 @@ export default function ShopScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={styles.appName}>a la Mode</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={28} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {userName ? `${userName}'s Brands` : 'Favorite Brands'}
+        </Text>
+        <View style={styles.backButton} />
       </View>
 
-      {/* Brands List */}
       <FlatList
         ref={flatListRef}
         data={brands}
@@ -293,7 +353,9 @@ export default function ShopScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No brands available</Text>
+            <Text style={styles.emptyText}>
+              {userName ? `${userName} isn't following any brands yet` : 'No brands found'}
+            </Text>
           </View>
         }
         renderItem={({ item }) => (
@@ -326,27 +388,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
-  appName: {
-    fontFamily: 'Zodiak-Thin',
-    fontSize: 28,
-    textAlign: 'center',
-    letterSpacing: 2,
+  backButton: {
+    width: 40,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   listContent: {
-    paddingTop: 16,
+    paddingBottom: 20,
   },
   emptyContainer: {
-    paddingVertical: 48,
+    padding: 40,
     alignItems: 'center',
   },
   emptyText: {
     fontSize: 16,
-    color: '#666',
+    color: '#999',
+    textAlign: 'center',
   },
 });

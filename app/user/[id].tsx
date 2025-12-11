@@ -6,14 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -37,6 +37,7 @@ export default function UserProfileScreen() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [likedProducts, setLikedProducts] = useState<Product[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followedBrandsCount, setFollowedBrandsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -74,6 +75,14 @@ export default function UserProfileScreen() {
 
         setIsFollowing(!!followData);
       }
+
+      // Fetch count of brands user follows
+      const { count: brandsCount } = await supabase
+        .from('user_follows_brands')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', id);
+
+      setFollowedBrandsCount(brandsCount || 0);
 
       // Fetch user's liked products
       const { data: likedData, error: likedError } = await supabase
@@ -302,10 +311,13 @@ export default function UserProfileScreen() {
                 <Text style={styles.statLabel}>Followers</Text>
               </View>
               <View style={styles.statDivider} />
-              <View style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push(`/user/${id}/following`)}
+                activeOpacity={0.7}>
                 <Text style={styles.statNumber}>{userProfile.following_count}</Text>
                 <Text style={styles.statLabel}>Following</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Follow Button */}
@@ -318,13 +330,25 @@ export default function UserProfileScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Liked Products Header */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Liked Products</Text>
-              <View style={styles.likedCountBadge}>
-                <Ionicons name="heart" size={16} color="#fff" />
-                <Text style={styles.likedCountText}>{userProfile.liked_items_count}</Text>
+            {/* Category Tabs */}
+            <View style={styles.categoryTabs}>
+              <View style={styles.categoryTab}>
+                <View style={styles.categoryBadge}>
+                  <Ionicons name="heart" size={16} color="#fff" />
+                  <Text style={styles.categoryBadgeText}>{userProfile.liked_items_count}</Text>
+                </View>
+                <Text style={styles.categoryTabText}>Liked Products</Text>
               </View>
+              <TouchableOpacity
+                style={styles.categoryTab}
+                onPress={() => router.push(`/user/${id}/brands`)}
+                activeOpacity={0.7}>
+                <View style={styles.categoryBadge}>
+                  <Ionicons name="heart" size={16} color="#fff" />
+                  <Text style={styles.categoryBadgeText}>{followedBrandsCount}</Text>
+                </View>
+                <Text style={styles.categoryTabText}>Favorite Brands</Text>
+              </TouchableOpacity>
             </View>
           </View>
         }
@@ -469,6 +493,37 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   followingButtonText: {
+    color: '#000',
+  },
+  categoryTabs: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    marginTop: 24,
+    marginBottom: 24,
+    gap: 12,
+  },
+  categoryTab: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  categoryBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  categoryTabText: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#000',
   },
   sectionHeader: {

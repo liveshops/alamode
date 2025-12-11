@@ -65,13 +65,17 @@ export default function ProductDetailScreen() {
 
       // Check if user has liked this product
       if (user) {
-        const { data: likeData } = await supabase
+        const { data: likeData, error: likeError } = await supabase
           .from('user_likes_products')
-          .select('id')
+          .select('user_id')
           .eq('user_id', user.id)
           .eq('product_id', id)
           .maybeSingle();
 
+        if (likeError) {
+          console.error('Error checking like status:', likeError);
+        }
+        
         setIsLiked(!!likeData);
       } else {
         setIsLiked(false);
@@ -103,11 +107,13 @@ export default function ProductDetailScreen() {
     try {
       if (wasLiked) {
         // Unlike - delete the record
-        await supabase
+        const { error: deleteError } = await supabase
           .from('user_likes_products')
           .delete()
           .eq('user_id', user.id)
           .eq('product_id', product.id);
+        
+        if (deleteError) throw deleteError;
       } else {
         // Like - use upsert to avoid duplicate key errors
         const { error } = await supabase

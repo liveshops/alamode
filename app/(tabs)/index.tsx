@@ -1,15 +1,31 @@
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProducts } from '@/hooks/useProducts';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { profile } = useAuth();
-  const { products, loading, error, refetch, toggleLike } = useProducts();
+  const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike } = useProducts(20);
   const [refreshing, setRefreshing] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
+  const scrollPositionRef = useRef(0);
+
+  // Restore scroll position when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (scrollPositionRef.current > 0) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({
+            offset: scrollPositionRef.current,
+            animated: false,
+          });
+        }, 100);
+      }
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -51,12 +67,23 @@ export default function HomeScreen() {
 
       {/* Product Grid */}
       <FlatList
+        ref={flatListRef}
         data={products}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          scrollPositionRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        onEndReached={() => {
+          if (hasMore && !loadingMore) {
+            loadMore();
+          }
+        }}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
         }
@@ -67,6 +94,13 @@ export default function HomeScreen() {
               Follow some brands to see their latest drops!
             </Text>
           </View>
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color="#000" />
+            </View>
+          ) : null
         }
         renderItem={({ item }) => (
           <View style={styles.cardWrapper}>
@@ -147,5 +181,9 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     paddingHorizontal: 40,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

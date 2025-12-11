@@ -4,7 +4,7 @@ import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -38,9 +38,13 @@ export default function BrandProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const flatListRef = useRef<FlatList>(null);
+  const scrollPositionRef = useRef(0);
+  const shouldRestoreScroll = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
+      shouldRestoreScroll.current = scrollPositionRef.current > 0;
       fetchBrandData();
     }, [slug, user])
   );
@@ -113,6 +117,16 @@ export default function BrandProfileScreen() {
       setError(err instanceof Error ? err.message : 'Failed to load brand');
     } finally {
       setLoading(false);
+      // Restore scroll after data loads
+      if (shouldRestoreScroll.current) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({
+            offset: scrollPositionRef.current,
+            animated: false,
+          });
+          shouldRestoreScroll.current = false;
+        }, 300);
+      }
     }
   };
 
@@ -260,12 +274,17 @@ export default function BrandProfileScreen() {
       </View>
 
       <FlatList
+        ref={flatListRef}
         data={products}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          scrollPositionRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
         }

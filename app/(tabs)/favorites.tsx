@@ -4,15 +4,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,11 +36,22 @@ export default function FavoritesScreen() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const productsListRef = useRef<FlatList>(null);
+  const brandsListRef = useRef<FlatList>(null);
+  const productsScrollRef = useRef(0);
+  const brandsScrollRef = useRef(0);
+  const shouldRestoreProductsScroll = useRef(false);
+  const shouldRestoreBrandsScroll = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
+      if (activeTab === 'products') {
+        shouldRestoreProductsScroll.current = productsScrollRef.current > 0;
+      } else {
+        shouldRestoreBrandsScroll.current = brandsScrollRef.current > 0;
+      }
       fetchData();
-    }, [user])
+    }, [user, activeTab])
   );
 
   const fetchData = async () => {
@@ -54,30 +65,26 @@ export default function FavoritesScreen() {
     try {
       setLoading(true);
 
-      // Fetch liked products
+      // Use optimized database function for liked products
       const { data: likedProductsData, error: productsError } = await supabase
-        .from('user_likes_products')
-        .select(
-          `
-          product_id,
-          products (
-            *,
-            brand:brands(id, name, slug, logo_url)
-          )
-        `
-        )
-        .eq('user_id', user.id)
-        .order('liked_at', { ascending: false });
+        .rpc('get_user_liked_products', {
+          p_user_id: user.id,
+          p_limit: 100,
+          p_offset: 0
+        });
 
       if (productsError) throw productsError;
 
-      const productsWithLiked = (likedProductsData || [])
-        .map((item: any) => item.products)
-        .filter(Boolean)
-        .map((product: any) => ({
-          ...product,
-          is_liked: true,
-        }));
+      const productsWithLiked = (likedProductsData || []).map((product: any) => ({
+        ...product,
+        brand: {
+          id: product.brand_id,
+          name: product.brand_name,
+          slug: product.brand_slug,
+          logo_url: product.brand_logo_url,
+        },
+        is_liked: true,
+      }));
 
       setProducts(productsWithLiked);
 
@@ -104,6 +111,23 @@ export default function FavoritesScreen() {
       console.error('Error fetching favorites:', err);
     } finally {
       setLoading(false);
+      // Restore scroll after data loads
+      setTimeout(() => {
+        if (shouldRestoreProductsScroll.current) {
+          productsListRef.current?.scrollToOffset({
+            offset: productsScrollRef.current,
+            animated: false,
+          });
+          shouldRestoreProductsScroll.current = false;
+        }
+        if (shouldRestoreBrandsScroll.current) {
+          brandsListRef.current?.scrollToOffset({
+            offset: brandsScrollRef.current,
+            animated: false,
+          });
+          shouldRestoreBrandsScroll.current = false;
+        }
+      }, 300);
     }
   };
 
@@ -175,10 +199,15 @@ export default function FavoritesScreen() {
 
   const renderProductsList = () => (
     <FlatList
+      ref={productsListRef}
       data={products}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.listContent}
       showsVerticalScrollIndicator={false}
+      onScroll={(e) => {
+        productsScrollRef.current = e.nativeEvent.contentOffset.y;
+      }}
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
       }
@@ -203,10 +232,15 @@ export default function FavoritesScreen() {
 
   const renderBrandsList = () => (
     <FlatList
+      ref={brandsListRef}
       data={brands}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.brandsListContent}
       showsVerticalScrollIndicator={false}
+      onScroll={(e) => {
+        brandsScrollRef.current = e.nativeEvent.contentOffset.y;
+      }}
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
       }

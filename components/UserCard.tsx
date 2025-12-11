@@ -7,6 +7,7 @@ interface User {
   display_name: string;
   username: string;
   avatar_url: string | null;
+  follower_count?: number;
 }
 
 interface UserCardProps {
@@ -36,7 +37,7 @@ export function UserCard({ user, isFollowing, onPress, onToggleFollow }: UserCar
         <Text style={styles.username}>@{user.username}</Text>
       </View>
 
-      {/* Follow Button */}
+      {/* Follow Button with Count */}
       <TouchableOpacity
         onPress={(e) => {
           e.stopPropagation();
@@ -44,11 +45,26 @@ export function UserCard({ user, isFollowing, onPress, onToggleFollow }: UserCar
         }}
         activeOpacity={0.7}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <Ionicons
-          name={isFollowing ? 'heart' : 'heart-outline'}
-          size={24}
-          color="#000"
-        />
+        <View
+          style={[
+            styles.heartBadge,
+            isFollowing && styles.heartBadgeLiked,
+          ]}>
+          <Ionicons
+            name={isFollowing ? 'heart' : 'heart-outline'}
+            size={18}
+            color={isFollowing ? '#fff' : '#000'}
+          />
+          {(user.follower_count ?? 0) >= 1 && (
+            <Text
+              style={[
+                styles.followerCount,
+                isFollowing && styles.followerCountLiked,
+              ]}>
+              {user.follower_count}
+            </Text>
+          )}
+        </View>
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -92,5 +108,30 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 14,
     color: '#666',
+  },
+  heartBadge: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  heartBadgeLiked: {
+    backgroundColor: '#000',
+  },
+  followerCount: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  followerCountLiked: {
+    color: '#fff',
   },
 });
