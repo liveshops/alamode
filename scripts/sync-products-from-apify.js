@@ -15,6 +15,7 @@
 
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
+const { classifyProduct } = require('./scrapers/taxonomy-classifier');
 
 // Initialize Supabase client with service role key (for admin operations)
 const supabase = createClient(
@@ -37,9 +38,59 @@ const CATEGORY_MAPPING = {
 };
 
 /**
+ * Detect data format (Shopify vs Schema.org)
+ */
+function detectFormat(apifyProduct) {
+  // Shopify format has: title, variants[], medias[], source
+  if (apifyProduct.title && apifyProduct.variants) {
+    return 'shopify';
+  }
+  // Schema.org format has: name, offers, image
+  if (apifyProduct.name && apifyProduct.offers) {
+    return 'schema.org';
+  }
+  return 'unknown';
+}
+
+/**
+ * Transform Schema.org format (used by most e-commerce scrapers)
+ */
+function transformSchemaOrgProduct(apifyProduct, brandId) {
+  const productData = {
+    brand_id: brandId,
+    external_id: String(apifyProduct.mpn || apifyProduct.additionalProperties?.sku || apifyProduct.sku || apifyProduct.productID || `product-${Date.now()}-${Math.random()}`),
+    name: apifyProduct.name || 'Untitled Product',
+    description: apifyProduct.description || '',
+    price: parseFloat(apifyProduct.offers?.price || apifyProduct.price || 0),
+    sale_price: apifyProduct.offers?.salePrice ? parseFloat(apifyProduct.offers.salePrice) : null,
+    currency: apifyProduct.offers?.priceCurrency || 'USD',
+    image_url: apifyProduct.image || apifyProduct.imageUrl || '',
+    additional_images: apifyProduct.additionalProperties?.images?.map(img => img.url) || [],
+    product_url: apifyProduct.url || apifyProduct.productUrl || '',
+    variants: apifyProduct.additionalProperties?.variants || [],
+    is_available: true, // Assume available if scraped
+    last_checked_at: new Date().toISOString()
+  };
+  
+  // Classify product using Shopify taxonomy
+  const taxonomyData = classifyProduct({
+    name: productData.name,
+    description: productData.description,
+    product_type: apifyProduct.category || apifyProduct.productType || ''
+  });
+  
+  // Merge taxonomy data if classification succeeded
+  if (taxonomyData) {
+    Object.assign(productData, taxonomyData);
+  }
+  
+  return productData;
+}
+
+/**
  * Transform Apify Shopify data to our product schema
  */
-function transformApifyProduct(apifyProduct, brandId) {
+function transformShopifyProduct(apifyProduct, brandId) {
   const source = apifyProduct.source || {};
   const variants = apifyProduct.variants || [];
   const medias = apifyProduct.medias || [];
@@ -65,7 +116,7 @@ function transformApifyProduct(apifyProduct, brandId) {
   // Determine if product is in stock (check if any variant is in stock)
   const isAvailable = variants.some(v => v.price?.stockStatus === 'InStock');
   
-  return {
+  const baseProduct = {
     brand_id: brandId,
     external_id: source.id || apifyProduct.id,
     name: apifyProduct.title || 'Untitled Product',
@@ -90,6 +141,35 @@ function transformApifyProduct(apifyProduct, brandId) {
     is_available: isAvailable,
     last_checked_at: new Date().toISOString()
   };
+  
+  // Classify product using Shopify taxonomy
+  const taxonomyData = classifyProduct({
+    name: baseProduct.name,
+    description: baseProduct.description,
+    product_type: apifyProduct.productType || apifyProduct.type || ''
+  });
+  
+  // Merge taxonomy data if classification succeeded
+  if (taxonomyData) {
+    Object.assign(baseProduct, taxonomyData);
+  }
+  
+  return baseProduct;
+}
+
+/**
+ * Transform product based on detected format
+ */
+function transformApifyProduct(apifyProduct, brandId) {
+  const format = detectFormat(apifyProduct);
+  
+  if (format === 'shopify') {
+    return transformShopifyProduct(apifyProduct, brandId);
+  } else if (format === 'schema.org') {
+    return transformSchemaOrgProduct(apifyProduct, brandId);
+  } else {
+    throw new Error(`Unknown product format: ${JSON.stringify(apifyProduct).substring(0, 200)}`);
+  }
 }
 
 /**
@@ -214,12 +294,13 @@ async function syncBrandProducts(brandSlug) {
   
   // 2. Get Apify configuration
   const config = brand.scraper_config || {};
-  const apifyDatasetId = config.apify_dataset_id;
+  const apifyTaskId = config.apify_task_id;
   const apifyToken = process.env.APIFY_API_TOKEN;
   
-  if (!apifyDatasetId) {
-    console.error(`❌ No Apify dataset ID configured for ${brand.name}`);
-    console.log(`   Update the brand with: UPDATE brands SET scraper_config = '{"apify_dataset_id": "your-dataset-id"}' WHERE slug = '${brandSlug}';`);
+  if (!apifyTaskId) {
+    console.error(`❌ No Apify task ID configured for ${brand.name}`);
+    console.log(`   Update the brand with: UPDATE brands SET scraper_config = '{"apify_task_id": "tropical_infinity~task-name"}' WHERE slug = '${brandSlug}';`);
+    console.log(`   Example: UPDATE brands SET scraper_config = '{"apify_task_id": "tropical_infinity~e-commerce-scraping-tool-aritzia"}' WHERE slug = 'aritzia';`);
     return;
   }
   
@@ -228,7 +309,53 @@ async function syncBrandProducts(brandSlug) {
     return;
   }
   
-  // 3. Create scrape log
+  // 3. Fetch latest task run to get dataset ID
+  console.log(`📡 Fetching latest task run for: ${apifyTaskId}`);
+  
+  const taskRunUrl = `https://api.apify.com/v2/actor-tasks/${apifyTaskId}/runs/last?token=${apifyToken}`;
+  let apifyDatasetId;
+  
+  try {
+    const taskResponse = await fetch(taskRunUrl);
+    if (!taskResponse.ok) {
+      throw new Error(`Apify API error: ${taskResponse.status} ${taskResponse.statusText}`);
+    }
+    
+    const taskData = await taskResponse.json();
+    const runData = taskData.data;
+    
+    if (!runData) {
+      throw new Error('No run data found for this task');
+    }
+    
+    // Check run status
+    if (runData.status === 'RUNNING') {
+      console.error(`❌ Latest task run status: ${runData.status}`);
+      console.log(`   The task is still running. Wait for it to complete and try again.`);
+      return;
+    }
+    
+    // Allow TIMED-OUT, FAILED, and ABORTED tasks (they may have partial data)
+    if (runData.status !== 'SUCCEEDED') {
+      console.warn(`⚠️  Task status: ${runData.status} (will attempt to import available data)`);
+    }
+    
+    apifyDatasetId = runData.defaultDatasetId;
+    
+    if (!apifyDatasetId) {
+      throw new Error('No dataset ID found in task run');
+    }
+    
+    console.log(`✅ Found latest successful run (${apifyDatasetId})`);
+    console.log(`   Started: ${new Date(runData.startedAt).toLocaleString()}`);
+    console.log(`   Finished: ${new Date(runData.finishedAt).toLocaleString()}`);
+    
+  } catch (error) {
+    console.error(`❌ Error fetching latest task run:`, error.message);
+    return;
+  }
+  
+  // 4. Create scrape log
   const { data: logData } = await supabase
     .from('product_scrape_logs')
     .insert({
@@ -242,7 +369,7 @@ async function syncBrandProducts(brandSlug) {
   
   const logId = logData?.id;
   
-  // 4. Fetch products from Apify
+  // 5. Fetch products from Apify
   console.log(`📥 Fetching products from Apify dataset: ${apifyDatasetId}`);
   
   const apifyUrl = `https://api.apify.com/v2/datasets/${apifyDatasetId}/items?token=${apifyToken}`;
@@ -274,13 +401,30 @@ async function syncBrandProducts(brandSlug) {
     return;
   }
   
-  // 5. Process each product
+  // 6. Process each product
   let productsAdded = 0;
   let productsUpdated = 0;
   let productsFailed = 0;
   
   for (const apifyProduct of apifyProducts) {
     try {
+      // Detect format and validate
+      const format = detectFormat(apifyProduct);
+      
+      if (format === 'unknown') {
+        console.log(`  ⚠️  Skipping product - unknown format`);
+        productsFailed++;
+        continue;
+      }
+      
+      // Validate has name/title
+      const productName = apifyProduct.name || apifyProduct.title;
+      if (!productName || productName.trim() === '') {
+        console.log(`  ⚠️  Skipping product with no name/title`);
+        productsFailed++;
+        continue;
+      }
+      
       // Transform product data
       const productData = transformApifyProduct(apifyProduct, brand.id);
       
@@ -312,13 +456,13 @@ async function syncBrandProducts(brandSlug) {
     }
   }
   
-  // 6. Update brand's last_synced_at
+  // 7. Update brand's last_synced_at
   await supabase
     .from('brands')
     .update({ last_synced_at: new Date().toISOString() })
     .eq('id', brand.id);
   
-  // 7. Update scrape log
+  // 8. Update scrape log
   const executionTime = Math.floor((Date.now() - startTime) / 1000);
   
   if (logId) {
@@ -334,7 +478,7 @@ async function syncBrandProducts(brandSlug) {
       .eq('id', logId);
   }
   
-  // 8. Print summary
+  // 9. Print summary
   console.log(`\n📊 Sync Summary for ${brand.name}`);
   console.log(`   ➕ Products added: ${productsAdded}`);
   console.log(`   🔄 Products updated: ${productsUpdated}`);

@@ -14,7 +14,7 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const ShopifyScraper = require('./scrapers/shopify-scraper');
-const { ZaraScraper, AritziaScraper, HMScraper, HTMLScraper, FreePeopleScraper } = require('./scrapers/custom-scrapers');
+const { ZaraScraper, HTMLScraper } = require('./scrapers/custom-scrapers');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -23,15 +23,10 @@ const supabase = createClient(
 );
 
 // Map brand slugs to custom scrapers
+// Note: Brands with apify_task_id should use sync-products-from-apify.js instead
 const CUSTOM_SCRAPERS = {
   'zara': ZaraScraper,
-  'aritzia': AritziaScraper,
-  'hm': HMScraper,
-  'free-people': FreePeopleScraper,
-  'stradivarius': HTMLScraper,
-  'cult-mia': HTMLScraper,
-  'guizio': HTMLScraper,
-  'altard-state': HTMLScraper
+  'stradivarius': HTMLScraper
 };
 
 /**
