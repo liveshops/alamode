@@ -5,12 +5,12 @@ import { supabase } from '@/utils/supabase';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,9 +32,13 @@ export default function ShopScreen() {
   const [followedBrandIds, setFollowedBrandIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const shouldRestoreScroll = useRef(false);
+  const BRANDS_PER_PAGE = 10;
 
   useFocusEffect(
     useCallback(() => {
@@ -43,15 +47,22 @@ export default function ShopScreen() {
     }, [user])
   );
 
-  const fetchBrands = async () => {
+  const fetchBrands = async (reset = true) => {
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+        setOffset(0);
+      }
 
-      // Use optimized database function that limits products per brand
+      const currentOffset = reset ? 0 : offset;
+
+      // Use optimized database function with pagination
       const { data: brandsData, error: brandsError } = await supabase
         .rpc('get_shop_brands', {
           p_user_id: user?.id || null,
-          p_products_per_brand: 6
+          p_products_per_brand: 6,
+          p_limit: BRANDS_PER_PAGE,
+          p_offset: currentOffset
         });
 
       if (brandsError) throw brandsError;
@@ -66,23 +77,40 @@ export default function ShopScreen() {
         products: brand.products || [],
       }));
 
-      setBrands(brandsWithProducts);
+      if (reset) {
+        setBrands(brandsWithProducts);
+        setOffset(BRANDS_PER_PAGE);
+      } else {
+        // Filter out duplicates before appending
+        setBrands(prev => {
+          const existingIds = new Set(prev.map(b => b.id));
+          const newBrands = brandsWithProducts.filter((b: BrandWithProducts) => !existingIds.has(b.id));
+          return [...prev, ...newBrands];
+        });
+        setOffset(prev => prev + BRANDS_PER_PAGE);
+      }
+
+      setHasMore(brandsWithProducts.length === BRANDS_PER_PAGE);
 
       // Set followed brands from the is_following field returned by the function
-      if (user) {
-        const followedIds = new Set<string>(
-          brandsWithProducts
-            .filter((b: any) => brandsData?.find((bd: any) => bd.id === b.id)?.is_following)
-            .map((b: any) => b.id as string)
-        );
-        setFollowedBrandIds(followedIds);
-      } else {
+      if (user && brandsData) {
+        const newFollowedIds = brandsData
+          .filter((bd: any) => bd.is_following)
+          .map((bd: any) => bd.id as string);
+        
+        if (reset) {
+          setFollowedBrandIds(new Set(newFollowedIds));
+        } else {
+          setFollowedBrandIds(prev => new Set([...prev, ...newFollowedIds]));
+        }
+      } else if (reset) {
         setFollowedBrandIds(new Set());
       }
     } catch (err) {
       console.error('Error fetching brands:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       // Restore scroll after data loads
       if (shouldRestoreScroll.current) {
         setTimeout(() => {
@@ -94,6 +122,12 @@ export default function ShopScreen() {
         }, 300);
       }
     }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    await fetchBrands(false);
   };
 
   const onRefresh = async () => {
@@ -274,7 +308,7 @@ export default function ShopScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={styles.appName}>a la Mode</Text>
+        <Text style={styles.appName}>cherry</Text>
       </View>
 
       {/* Brands List */}
@@ -288,8 +322,17 @@ export default function ShopScreen() {
           scrollPositionRef.current = e.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color="#000" />
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -333,7 +376,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   appName: {
-    fontFamily: 'Zodiak-Thin',
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 28,
     textAlign: 'center',
     letterSpacing: 2,
@@ -348,5 +391,9 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#666',
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

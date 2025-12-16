@@ -182,7 +182,7 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={styles.appName}>a la Mode</Text>
+        <Text style={styles.appName}>cherry</Text>
       </View>
 
       <FlatList
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   appName: {
-    fontFamily: 'Zodiak-Thin',
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 28,
     textAlign: 'center',
     letterSpacing: 2,

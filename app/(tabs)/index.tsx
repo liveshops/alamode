@@ -1,6 +1,6 @@
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
-import { useProducts } from '@/hooks/useProducts';
+import { useRecommendations } from '@/hooks/useRecommendations';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +8,7 @@ import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } f
 export default function HomeScreen() {
   const router = useRouter();
   const { profile } = useAuth();
-  const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike } = useProducts(20);
+  const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike } = useRecommendations(20);
   const [refreshing, setRefreshing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
@@ -62,7 +62,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.appName}>a la Mode</Text>
+        <Text style={styles.appName}>cherry</Text>
       </View>
 
       {/* Product Grid */}
@@ -89,9 +89,9 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No products yet</Text>
+            <Text style={styles.emptyText}>Your personalized feed</Text>
             <Text style={styles.emptySubtext}>
-              Follow some brands to see their latest drops!
+              Like products and follow brands to get personalized recommendations!
             </Text>
           </View>
         }
@@ -137,10 +137,10 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   appName: {
-    fontFamily: 'Zodiak-Thin',
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 32,
     textAlign: 'center',
-    letterSpacing: 3,
+    letterSpacing: 1,
   },
   listContent: {
     paddingHorizontal: 12,

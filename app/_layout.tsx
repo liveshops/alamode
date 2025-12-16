@@ -13,6 +13,7 @@ export default function RootLayout() {
   
   const [fontsLoaded, fontError] = useFonts({
     'Zodiak-Thin': require('../assets/fonts/Zodiak-Thin.ttf'),
+    'AbrilFatface-Regular': require('../assets/fonts/AbrilFatface-Regular.ttf'),
   });
 
   useEffect(() => {

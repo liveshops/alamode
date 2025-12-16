@@ -56,9 +56,27 @@ function detectFormat(apifyProduct) {
  * Transform Schema.org format (used by most e-commerce scrapers)
  */
 function transformSchemaOrgProduct(apifyProduct, brandId) {
+  // Use URL path or name hash as stable external_id fallback
+  let externalId = apifyProduct.mpn || 
+                   apifyProduct.additionalProperties?.sku || 
+                   apifyProduct.sku || 
+                   apifyProduct.productID;
+  
+  if (!externalId) {
+    // Use URL path as stable ID (remove domain, query params)
+    const url = apifyProduct.url || apifyProduct.productUrl || '';
+    if (url) {
+      const urlPath = url.split('?')[0].split('/').filter(Boolean).slice(-2).join('-');
+      externalId = urlPath || `name-${apifyProduct.name?.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 50)}`;
+    } else {
+      // Last resort: use name-based ID
+      externalId = `name-${apifyProduct.name?.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 50)}`;
+    }
+  }
+  
   const productData = {
     brand_id: brandId,
-    external_id: String(apifyProduct.mpn || apifyProduct.additionalProperties?.sku || apifyProduct.sku || apifyProduct.productID || `product-${Date.now()}-${Math.random()}`),
+    external_id: String(externalId),
     name: apifyProduct.name || 'Untitled Product',
     description: apifyProduct.description || '',
     price: parseFloat(apifyProduct.offers?.price || apifyProduct.price || 0),

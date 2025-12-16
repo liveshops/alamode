@@ -71,7 +71,7 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.appName}>a la Mode</Text>
+      <Text style={styles.appName}>cherry</Text>
       
       {status === 'loading' && (
         <>
@@ -106,9 +106,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   appName: {
-    fontFamily: 'System',
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 48,
-    fontWeight: '300',
     textAlign: 'center',
     marginBottom: 60,
     letterSpacing: 2,

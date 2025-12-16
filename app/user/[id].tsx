@@ -268,7 +268,7 @@ export default function UserProfileScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.appName}>a la Mode</Text>
+        <Text style={styles.appName}>cherry</Text>
         <View style={styles.backButton} />
       </View>
 
@@ -404,9 +404,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   appName: {
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 24,
-    fontWeight: '300',
-    fontStyle: 'italic',
   },
   listContent: {
     paddingHorizontal: 16,

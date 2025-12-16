@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "a la Mode",
+    "name": "cherry",
     "slug": "new1",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,8 +13,8 @@
       "bundleIdentifier": "com.shopalamode.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSCameraUsageDescription": "Allow a la Mode to access your camera to update your profile picture.",
-        "NSPhotoLibraryUsageDescription": "Allow a la Mode to access your photo library to update your profile picture.",
+        "NSCameraUsageDescription": "Allow cherry to access your camera to update your profile picture.",
+        "NSPhotoLibraryUsageDescription": "Allow cherry to access your photo library to update your profile picture.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

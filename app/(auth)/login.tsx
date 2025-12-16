@@ -43,7 +43,7 @@ export default function LoginScreen() {
       style={styles.container}>
       <View style={styles.content}>
         {/* App Name */}
-        <Text style={styles.appName}>a la Mode</Text>
+        <Text style={styles.appName}>cherry</Text>
 
         {/* Input Fields */}
         <View style={styles.form}>
@@ -112,9 +112,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   appName: {
-    fontFamily: 'System',
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 48,
-    fontWeight: '300',
     textAlign: 'center',
     marginBottom: 80,
     letterSpacing: 2,

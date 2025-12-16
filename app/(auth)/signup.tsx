@@ -76,7 +76,7 @@ export default function SignUpScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled">
         {/* App Name */}
-        <Text style={styles.appName}>a la Mode</Text>
+        <Text style={styles.appName}>cherry</Text>
 
         {/* Input Fields */}
         <View style={styles.form}>
@@ -183,9 +183,8 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   appName: {
-    fontFamily: 'System',
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 48,
-    fontWeight: '300',
     textAlign: 'center',
     marginBottom: 60,
     letterSpacing: 2,

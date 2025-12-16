@@ -3,6 +3,7 @@ import { ProductCard } from '@/components/ProductCard';
 import { UserCard } from '@/components/UserCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
+import { RecommendedProduct } from '@/hooks/useRecommendations';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -49,6 +50,7 @@ export default function SearchScreen() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [forYouProducts, setForYouProducts] = useState<RecommendedProduct[]>([]);
   const [brands, setBrands] = useState<BrandWithProducts[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [followedBrandIds, setFollowedBrandIds] = useState<Set<string>>(new Set());
@@ -56,6 +58,13 @@ export default function SearchScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [forYouOffset, setForYouOffset] = useState(0);
+  const [forYouHasMore, setForYouHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [brandsOffset, setBrandsOffset] = useState(0);
+  const [brandsHasMore, setBrandsHasMore] = useState(true);
+  const [loadingMoreBrands, setLoadingMoreBrands] = useState(false);
+  const BRANDS_PER_PAGE = 10;
 
   // Scroll position refs for each tab
   const forYouListRef = useRef<FlatList>(null);
@@ -127,7 +136,9 @@ export default function SearchScreen() {
       setFollowedBrandIds(followedBrandIdsSet);
       setFollowedUserIds(followedUserIdsSet);
 
-      if (activeTab === 'for_you' || activeTab === 'most_liked') {
+      if (activeTab === 'for_you') {
+        await fetchForYouProducts();
+      } else if (activeTab === 'most_liked') {
         await fetchProducts(followedBrandIdsSet);
       } else if (activeTab === 'brands') {
         await fetchBrands();
@@ -173,80 +184,100 @@ export default function SearchScreen() {
     }
   };
 
+  const fetchForYouProducts = async (reset = true) => {
+    try {
+      const offset = reset ? 0 : forYouOffset;
+      
+      // Use personalized recommendations algorithm
+      const { data, error } = await supabase.rpc('get_recommendations', {
+        target_user_id: user!.id,
+        result_limit: 20,
+        offset_val: offset,
+      });
+
+      if (error) throw error;
+
+      let productsData = data || [];
+
+      // Apply search filter client-side if needed
+      if (debouncedQuery) {
+        productsData = productsData.filter((p: any) =>
+          p.name.toLowerCase().includes(debouncedQuery.toLowerCase())
+        );
+      }
+
+      // Map to expected format with nested brand object
+      const mappedProducts: RecommendedProduct[] = productsData.map((item: any) => ({
+        ...item,
+        id: item.product_id,
+        is_liked: item.is_liked_by_user,
+        brand: {
+          id: item.brand_id,
+          name: item.brand_name,
+          slug: item.brand_slug,
+        },
+      }));
+
+      if (reset) {
+        setForYouProducts(mappedProducts);
+        setForYouOffset(20);
+      } else {
+        setForYouProducts(prev => [...prev, ...mappedProducts]);
+        setForYouOffset(prev => prev + 20);
+      }
+      
+      setForYouHasMore(mappedProducts.length === 20);
+    } catch (err) {
+      console.error('Error fetching recommendations:', err);
+    }
+  };
+
+  const loadMoreForYou = async () => {
+    if (loadingMore || !forYouHasMore) return;
+    setLoadingMore(true);
+    await fetchForYouProducts(false);
+    setLoadingMore(false);
+  };
+
   const fetchProducts = async (followedBrandIdsSet: Set<string>) => {
     try {
-      if (activeTab === 'for_you') {
-        // Only products from followed brands
-        if (followedBrandIdsSet.size === 0) {
-          setProducts([]);
-          return;
-        }
+      // Most liked - use optimized function
+      const { data, error } = await supabase
+        .rpc('search_most_liked_products', {
+          p_user_id: user!.id,
+          p_search_query: debouncedQuery || null,
+          p_limit: 50
+        });
 
-        // Use optimized function for user feed
-        const { data, error } = await supabase
-          .rpc('get_user_feed', {
-            p_user_id: user!.id,
-            p_limit: 50,
-            p_offset: 0
-          });
+      if (error) throw error;
 
-        if (error) throw error;
+      const productsWithBrand = (data || []).map((product: any) => ({
+        ...product,
+        brand: {
+          id: product.brand_id,
+          name: product.brand_name,
+          slug: product.brand_slug,
+          logo_url: product.brand_logo_url,
+        },
+      }));
 
-        let productsData = data || [];
-
-        // Apply search filter client-side if needed
-        if (debouncedQuery) {
-          productsData = productsData.filter((p: any) => 
-            p.name.toLowerCase().includes(debouncedQuery.toLowerCase())
-          );
-        }
-
-        const productsWithBrand = productsData.map((product: any) => ({
-          ...product,
-          brand: {
-            id: product.brand_id,
-            name: product.brand_name,
-            slug: product.brand_slug,
-            logo_url: product.brand_logo_url,
-          },
-        }));
-
-        setProducts(productsWithBrand);
-      } else {
-        // Most liked - use optimized function
-        const { data, error } = await supabase
-          .rpc('search_most_liked_products', {
-            p_user_id: user!.id,
-            p_search_query: debouncedQuery || null,
-            p_limit: 50
-          });
-
-        if (error) throw error;
-
-        const productsWithBrand = (data || []).map((product: any) => ({
-          ...product,
-          brand: {
-            id: product.brand_id,
-            name: product.brand_name,
-            slug: product.brand_slug,
-            logo_url: product.brand_logo_url,
-          },
-        }));
-
-        setProducts(productsWithBrand);
-      }
+      setProducts(productsWithBrand);
     } catch (err) {
       console.error('Error fetching products:', err);
     }
   };
 
-  const fetchBrands = async () => {
+  const fetchBrands = async (reset = true) => {
     try {
-      // Use optimized database function
+      const currentOffset = reset ? 0 : brandsOffset;
+
+      // Use optimized database function with pagination
       const { data, error } = await supabase
         .rpc('get_shop_brands', {
           p_user_id: user!.id,
-          p_products_per_brand: 6
+          p_products_per_brand: 6,
+          p_limit: BRANDS_PER_PAGE,
+          p_offset: currentOffset
         });
 
       if (error) throw error;
@@ -261,7 +292,7 @@ export default function SearchScreen() {
       }
 
       // Process brands data
-      const brandsWithProducts = brandsData.map((brand: any) => ({
+      const brandsWithProducts: BrandWithProducts[] = brandsData.map((brand: any) => ({
         id: brand.id,
         name: brand.name,
         slug: brand.slug,
@@ -270,10 +301,31 @@ export default function SearchScreen() {
         products: brand.products || [],
       }));
 
-      setBrands(brandsWithProducts);
+      if (reset) {
+        setBrands(brandsWithProducts);
+        setBrandsOffset(BRANDS_PER_PAGE);
+      } else {
+        // Filter out duplicates
+        setBrands(prev => {
+          const existingIds = new Set(prev.map(b => b.id));
+          const newBrands = brandsWithProducts.filter(b => !existingIds.has(b.id));
+          return [...prev, ...newBrands];
+        });
+        setBrandsOffset(prev => prev + BRANDS_PER_PAGE);
+      }
+
+      setBrandsHasMore(brandsWithProducts.length === BRANDS_PER_PAGE);
     } catch (err) {
       console.error('Error fetching brands:', err);
+    } finally {
+      setLoadingMoreBrands(false);
     }
+  };
+
+  const loadMoreBrands = async () => {
+    if (loadingMoreBrands || !brandsHasMore) return;
+    setLoadingMoreBrands(true);
+    await fetchBrands(false);
   };
 
   const fetchUsers = async () => {
@@ -316,23 +368,35 @@ export default function SearchScreen() {
   const handleToggleLikeProduct = async (productId: string) => {
     if (!user) return;
 
+    // Check both product lists
     const product = products.find((p) => p.id === productId);
-    if (!product) return;
+    const forYouProduct = forYouProducts.find((p) => p.id === productId);
+    const targetProduct = product || forYouProduct;
+    if (!targetProduct) return;
 
-    const wasLiked = product.is_liked;
+    const wasLiked = targetProduct.is_liked ?? false;
+    const newLikedState = !wasLiked;
+    const newLikeCount = wasLiked ? Math.max(0, targetProduct.like_count - 1) : targetProduct.like_count + 1;
 
-    // Optimistic update
-    setProducts((prev) =>
-      prev.map((p) =>
-        p.id === productId
-          ? {
-              ...p,
-              is_liked: !wasLiked,
-              like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
-            }
-          : p
-      )
-    );
+    // Optimistic update for both lists
+    if (product) {
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === productId
+            ? { ...p, is_liked: newLikedState, like_count: newLikeCount }
+            : p
+        )
+      );
+    }
+    if (forYouProduct) {
+      setForYouProducts((prev) =>
+        prev.map((p): RecommendedProduct =>
+          p.id === productId
+            ? { ...p, is_liked: newLikedState, is_liked_by_user: newLikedState, like_count: newLikeCount }
+            : p
+        )
+      );
+    }
 
     try {
       if (wasLiked) {
@@ -354,17 +418,25 @@ export default function SearchScreen() {
     } catch (err) {
       console.error('Error toggling like:', err);
       // Revert on error
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === productId
-            ? {
-                ...p,
-                is_liked: wasLiked,
-                like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
-              }
-            : p
-        )
-      );
+      const revertLikeCount = wasLiked ? targetProduct.like_count + 1 : Math.max(0, targetProduct.like_count - 1);
+      if (product) {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === productId
+              ? { ...p, is_liked: wasLiked, like_count: revertLikeCount }
+              : p
+          )
+        );
+      }
+      if (forYouProduct) {
+        setForYouProducts((prev) =>
+          prev.map((p): RecommendedProduct =>
+            p.id === productId
+              ? { ...p, is_liked: wasLiked, is_liked_by_user: wasLiked, like_count: revertLikeCount }
+              : p
+          )
+        );
+      }
     }
   };
 
@@ -567,11 +639,15 @@ export default function SearchScreen() {
     }
   };
 
-  const renderProductsList = () => (
+  const renderProductsList = () => {
+    const isForYou = activeTab === 'for_you';
+    const displayProducts = isForYou ? forYouProducts : products;
+
+    return (
     <FlatList
-      ref={activeTab === 'for_you' ? forYouListRef : mostLikedListRef}
+      ref={isForYou ? forYouListRef : mostLikedListRef}
       key="products-grid"
-      data={products}
+      data={displayProducts}
       keyExtractor={(item) => item.id}
       numColumns={2}
       columnWrapperStyle={styles.productRow}
@@ -605,10 +681,19 @@ export default function SearchScreen() {
           )}
         </View>
       }
+      onEndReached={isForYou ? loadMoreForYou : undefined}
+      onEndReachedThreshold={0.5}
+      ListFooterComponent={
+        isForYou && loadingMore ? (
+          <View style={styles.loadingMore}>
+            <ActivityIndicator size="small" color="#000" />
+          </View>
+        ) : null
+      }
       renderItem={({ item }) => (
         <View style={styles.productCardWrapper}>
           <ProductCard
-            product={item}
+            product={item as any}
             onPress={() => handleProductPress(item.id)}
             onLike={() => handleToggleLikeProduct(item.id)}
             onBrandPress={() => handleBrandPress(item.brand.slug)}
@@ -617,6 +702,7 @@ export default function SearchScreen() {
       )}
     />
   );
+  };
 
   const renderBrandsList = () => (
     <FlatList
@@ -630,8 +716,17 @@ export default function SearchScreen() {
         brandsScrollRef.current = e.nativeEvent.contentOffset.y;
       }}
       scrollEventThrottle={16}
+      onEndReached={loadMoreBrands}
+      onEndReachedThreshold={0.5}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
+      }
+      ListFooterComponent={
+        loadingMoreBrands ? (
+          <View style={styles.loadingMore}>
+            <ActivityIndicator size="small" color="#000" />
+          </View>
+        ) : null
       }
       ListEmptyComponent={
         <View style={styles.emptyContainer}>
@@ -857,6 +952,10 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: '48%',
     marginBottom: 24,
+  },
+  loadingMore: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   brandListContent: {
     paddingTop: 16,

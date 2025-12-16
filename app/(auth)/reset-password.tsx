@@ -65,7 +65,7 @@ export default function ResetPasswordScreen() {
       style={styles.container}>
       <View style={styles.content}>
         {/* App Name */}
-        <Text style={styles.appName}>a la Mode</Text>
+        <Text style={styles.appName}>cherry</Text>
 
         {/* Title */}
         <Text style={styles.title}>Create New Password</Text>
@@ -134,9 +134,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   appName: {
-    fontFamily: 'System',
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 48,
-    fontWeight: '300',
     textAlign: 'center',
     marginBottom: 40,
     letterSpacing: 2,

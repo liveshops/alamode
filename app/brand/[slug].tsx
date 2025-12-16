@@ -269,7 +269,7 @@ export default function BrandProfileScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>a la Mode</Text>
+        <Text style={styles.headerTitle}>cherry</Text>
         <View style={styles.backButton} />
       </View>
 
@@ -382,9 +382,8 @@ const styles = StyleSheet.create({
     width: 40,
   },
   headerTitle: {
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 24,
-    fontWeight: '300',
-    fontStyle: 'italic',
   },
   listContent: {
     paddingHorizontal: 16,

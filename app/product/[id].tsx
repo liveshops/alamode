@@ -1,20 +1,21 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
+import { useSimilarProducts } from '@/hooks/useRecommendations';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  Image,
-  Linking,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    Image,
+    Linking,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -34,6 +35,17 @@ export default function ProductDetailScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+
+  // Fetch similar products with pagination
+  const { products: similarProducts, loading: loadingSimilar, loadingMore: loadingMoreSimilar, hasMore: hasMoreSimilar, loadMore: loadMoreSimilar } = useSimilarProducts(id || null, 6);
+
+  const handleSimilarScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const isNearEnd = layoutMeasurement.width + contentOffset.x >= contentSize.width - 100;
+    if (isNearEnd && hasMoreSimilar && !loadingMoreSimilar) {
+      loadMoreSimilar();
+    }
+  };
 
   // Combine main image with additional images
   const allImages = product
@@ -184,7 +196,7 @@ export default function ProductDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={styles.headerTitle}>a la Mode</Text>
+        <Text style={styles.headerTitle}>cherry</Text>
       </View>
 
       <ScrollView
@@ -285,6 +297,53 @@ export default function ProductDetailScreen() {
               <Text style={styles.descriptionText}>{product.description}</Text>
             </View>
           )}
+
+          {/* Similar Products */}
+          {similarProducts.length > 0 && (
+            <View style={styles.similarSection}>
+              <Text style={styles.similarTitle}>You Might Also Like</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                onScroll={handleSimilarScroll}
+                scrollEventThrottle={16}
+                contentContainerStyle={styles.similarScrollContent}>
+                {similarProducts.map((item) => (
+                  <TouchableOpacity 
+                    key={item.id} 
+                    style={styles.similarProductCard}
+                    onPress={() => router.push(`/product/${item.id}`)}
+                    activeOpacity={0.8}>
+                    <View style={styles.similarImageContainer}>
+                      <Image 
+                        source={{ uri: item.image_url }} 
+                        style={styles.similarImage} 
+                        resizeMode="cover" 
+                      />
+                      <View style={styles.similarHeartBadge}>
+                        <Ionicons name="heart-outline" size={12} color="#000" />
+                        {item.like_count > 0 && (
+                          <Text style={styles.similarLikeCount}>{item.like_count}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <Text style={styles.similarProductName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.similarBrandName}>{item.brand_name}</Text>
+                    <Text style={styles.similarPrice}>
+                      ${(item.sale_price || item.price).toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {loadingMoreSimilar && (
+                  <View style={styles.similarLoadingMore}>
+                    <ActivityIndicator size="small" color="#000" />
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -334,10 +393,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   headerTitle: {
+    fontFamily: 'AbrilFatface-Regular',
     fontSize: 24,
-    fontWeight: '300',
     textAlign: 'center',
-    fontStyle: 'italic',
   },
   scrollView: {
     flex: 1,
@@ -461,6 +519,80 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#333',
+  },
+  similarSection: {
+    marginTop: 32,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  similarTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  similarScrollContent: {
+    paddingRight: 16,
+    gap: 12,
+  },
+  similarProductCard: {
+    width: 120,
+    marginRight: 12,
+  },
+  similarImageContainer: {
+    position: 'relative',
+    width: 120,
+    height: 160,
+    backgroundColor: '#f5f5f5',
+  },
+  similarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  similarHeartBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  similarLikeCount: {
+    fontSize: 10,
+    color: '#000',
+    fontWeight: '500',
+  },
+  similarProductName: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 8,
+    color: '#000',
+  },
+  similarBrandName: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  similarPrice: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+    color: '#000',
+  },
+  similarLoadingMore: {
+    width: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   bottomBar: {
     flexDirection: 'row',

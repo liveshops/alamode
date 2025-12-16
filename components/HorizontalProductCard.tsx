@@ -6,7 +6,7 @@ import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-
 interface HorizontalProductCardProps {
   product: Product;
   onPress: () => void;
-  onLike: () => void;
+  onLike?: () => void;
   onBrandPress?: () => void;
 }
 
@@ -61,7 +61,7 @@ export function HorizontalProductCard({
           style={styles.heartButton}
           onPress={(e) => {
             e.stopPropagation();
-            onLike();
+            onLike?.();
           }}
           activeOpacity={0.7}>
           <View style={[styles.heartBadge, product.is_liked && styles.heartBadgeLiked]}>
