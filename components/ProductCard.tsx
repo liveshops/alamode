@@ -11,8 +11,23 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductCardProps) {
-  const displayPrice = product.sale_price || product.price;
-  const hasDiscount = !!product.sale_price;
+  // Determine which price is lower (the actual sale/current price)
+  const hasDiscount = product.sale_price != null && product.sale_price !== product.price;
+  
+  // Always show the lower price as current, higher as original (struck through)
+  let currentPrice = product.price;
+  let originalPrice = product.price; // default, will be overwritten if hasDiscount
+  
+  if (hasDiscount && product.sale_price != null) {
+    // Ensure currentPrice is the lower one, originalPrice is the higher one
+    if (product.sale_price < product.price) {
+      currentPrice = product.sale_price;
+      originalPrice = product.price;
+    } else {
+      currentPrice = product.price;
+      originalPrice = product.sale_price;
+    }
+  }
 
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.9}>
@@ -49,22 +64,23 @@ export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductC
           {product.name}
         </Text>
 
-        <View style={styles.bottomRow}>
-          <TouchableOpacity 
-            onPress={(e) => {
-              e.stopPropagation();
-              onBrandPress?.();
-            }}
-            disabled={!onBrandPress}
-            activeOpacity={0.7}>
-            <Text style={styles.brandName}>{product.brand.name}</Text>
-          </TouchableOpacity>
-          <View style={styles.priceContainer}>
-            {hasDiscount && (
-              <Text style={styles.originalPrice}>${product.price.toFixed(2)}</Text>
-            )}
-            <Text style={styles.price}>${displayPrice.toFixed(2)}</Text>
-          </View>
+        {/* Brand Name */}
+        <TouchableOpacity 
+          onPress={(e) => {
+            e.stopPropagation();
+            onBrandPress?.();
+          }}
+          disabled={!onBrandPress}
+          activeOpacity={0.7}>
+          <Text style={styles.brandName} numberOfLines={1}>{product.brand.name}</Text>
+        </TouchableOpacity>
+
+        {/* Price Row */}
+        <View style={styles.priceContainer}>
+          {hasDiscount && (
+            <Text style={styles.originalPrice}>${originalPrice.toFixed(2)}</Text>
+          )}
+          <Text style={styles.currentPrice}>${currentPrice.toFixed(2)}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -127,29 +143,25 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     lineHeight: 18,
   },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 2,
-  },
   brandName: {
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginTop: 2,
   },
   priceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginTop: 4,
   },
   originalPrice: {
     fontSize: 12,
     color: '#999',
     textDecorationLine: 'line-through',
   },
-  price: {
+  currentPrice: {
     fontSize: 14,
     fontWeight: '600',
   },

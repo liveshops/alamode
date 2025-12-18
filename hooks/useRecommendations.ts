@@ -66,6 +66,7 @@ export function useRecommendations(initialLimit = 20) {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [refreshSeed, setRefreshSeed] = useState(0);
 
   const fetchRecommendations = useCallback(async (loadMore = false) => {
     if (!user) {
@@ -86,10 +87,17 @@ export function useRecommendations(initialLimit = 20) {
 
       const currentOffset = loadMore ? offset : 0;
 
+      const currentSeed = loadMore ? refreshSeed : Math.floor(Math.random() * 1000);
+      
+      if (!loadMore) {
+        setRefreshSeed(currentSeed);
+      }
+
       const { data, error: rpcError } = await supabase.rpc('get_recommendations', {
         target_user_id: user.id,
         result_limit: initialLimit,
         offset_val: currentOffset,
+        refresh_seed: currentSeed,
       });
 
       if (rpcError) throw rpcError;
@@ -122,7 +130,7 @@ export function useRecommendations(initialLimit = 20) {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [user, offset, initialLimit]);
+  }, [user, offset, initialLimit, refreshSeed]);
 
   useEffect(() => {
     fetchRecommendations();
@@ -210,8 +218,10 @@ export function useRecommendations(initialLimit = 20) {
 /**
  * Hook for fetching similar products to a given product.
  * Uses the get_similar_products SQL function with pagination.
+ * Passes user ID to enable discovery bonus for brands user doesn't follow.
  */
 export function useSimilarProducts(productId: string | null, initialLimit = 6) {
+  const { user } = useAuth();
   const [products, setProducts] = useState<SimilarProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -234,11 +244,30 @@ export function useSimilarProducts(productId: string | null, initialLimit = 6) {
 
       const currentOffset = reset ? 0 : offset;
 
-      const { data, error: rpcError } = await supabase.rpc('get_similar_products', {
+      // Try new function signature with for_user_id, fall back to old signature
+      let data, rpcError;
+      
+      // First try with for_user_id (new function after migration)
+      const result = await supabase.rpc('get_similar_products', {
         source_product_id: productId,
         result_limit: initialLimit,
         result_offset: currentOffset,
+        for_user_id: user?.id || null,
       });
+      
+      if (result.error?.code === 'PGRST202') {
+        // Function signature mismatch - use old signature without for_user_id
+        const fallbackResult = await supabase.rpc('get_similar_products', {
+          source_product_id: productId,
+          result_limit: initialLimit,
+          result_offset: currentOffset,
+        });
+        data = fallbackResult.data;
+        rpcError = fallbackResult.error;
+      } else {
+        data = result.data;
+        rpcError = result.error;
+      }
 
       if (rpcError) throw rpcError;
 
@@ -274,7 +303,7 @@ export function useSimilarProducts(productId: string | null, initialLimit = 6) {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [productId, initialLimit, offset]);
+  }, [productId, initialLimit, offset, user]);
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;

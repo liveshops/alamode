@@ -12,6 +12,7 @@ import {
     RefreshControl,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
@@ -34,10 +35,12 @@ export default function BrandProfileScreen() {
 
   const [brand, setBrand] = useState<Brand | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const shouldRestoreScroll = useRef(false);
@@ -109,8 +112,27 @@ export default function BrandProfileScreen() {
         }));
 
         setProducts(productsWithLikes);
+        // Apply existing search filter if there's an active query
+        if (searchQuery.trim()) {
+          const filtered = productsWithLikes.filter((p: Product) =>
+            p.name.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          setFilteredProducts(filtered);
+        } else {
+          setFilteredProducts(productsWithLikes);
+        }
       } else {
-        setProducts(productsData || []);
+        const allProducts = productsData || [];
+        setProducts(allProducts);
+        // Apply existing search filter if there's an active query
+        if (searchQuery.trim()) {
+          const filtered = allProducts.filter((p: Product) =>
+            p.name.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          setFilteredProducts(filtered);
+        } else {
+          setFilteredProducts(allProducts);
+        }
       }
     } catch (err) {
       console.error('Error fetching brand:', err);
@@ -134,6 +156,18 @@ export default function BrandProfileScreen() {
     setRefreshing(true);
     await fetchBrandData();
     setRefreshing(false);
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setFilteredProducts(products);
+    } else {
+      const filtered = products.filter((p) =>
+        p.name.toLowerCase().includes(query.toLowerCase())
+      );
+      setFilteredProducts(filtered);
+    }
   };
 
   const handleToggleFollow = async () => {
@@ -275,7 +309,7 @@ export default function BrandProfileScreen() {
 
       <FlatList
         ref={flatListRef}
-        data={products}
+        data={filteredProducts}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
@@ -324,8 +358,24 @@ export default function BrandProfileScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Products Header */}
-            <Text style={styles.productsHeader}>Products</Text>
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={18} color="#999" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search"
+                placeholderTextColor="#999"
+                value={searchQuery}
+                onChangeText={handleSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => handleSearch('')}>
+                  <Ionicons name="close-circle" size={18} color="#999" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
         }
         ListEmptyComponent={
@@ -458,12 +508,23 @@ const styles = StyleSheet.create({
   followingButtonText: {
     color: '#000',
   },
-  productsHeader: {
-    fontSize: 18,
-    fontWeight: '600',
-    alignSelf: 'flex-start',
-    marginTop: 24,
-    marginBottom: 8,
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 20,
+    width: '100%',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
   },
   row: {
     justifyContent: 'space-between',

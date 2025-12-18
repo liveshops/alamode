@@ -7,7 +7,7 @@ import { RecommendedProduct } from '@/hooks/useRecommendations';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -77,14 +77,10 @@ export default function SearchScreen() {
   const usersScrollRef = useRef(0);
   const shouldRestoreScroll = useRef<TabType | null>(null);
 
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // Handle search submit (when user presses return)
+  const handleSearchSubmit = () => {
+    setDebouncedQuery(searchQuery);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -332,14 +328,18 @@ export default function SearchScreen() {
     try {
       let query = supabase.from('profiles').select('id, display_name, username, avatar_url, follower_count');
 
-      // Apply search filter
+      // Apply search filter if there's a query
       if (debouncedQuery) {
         query = query.or(
           `display_name.ilike.%${debouncedQuery}%,username.ilike.%${debouncedQuery}%`
         );
       }
 
-      query = query.neq('id', user!.id).limit(50);
+      // Order by popularity (follower count) and limit results
+      query = query
+        .neq('id', user!.id)
+        .order('follower_count', { ascending: false })
+        .limit(50);
 
       const { data, error } = await query;
 
@@ -729,16 +729,18 @@ export default function SearchScreen() {
         ) : null
       }
       ListEmptyComponent={
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            {debouncedQuery ? "We couldn't find any brands" : 'No brands available'}
-          </Text>
-          {debouncedQuery && (
-            <Text style={styles.emptySubtext}>
-              Try searching for something else or browse all brands in the Shop tab
+        loading ? null : (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>
+              {debouncedQuery ? "No brands match your search" : 'No brands available yet'}
             </Text>
-          )}
-        </View>
+            <Text style={styles.emptySubtext}>
+              {debouncedQuery 
+                ? 'Try a different search term'
+                : 'Check out the Shop tab to discover brands'}
+            </Text>
+          </View>
+        )
       }
       renderItem={({ item }) => (
         <BrandRowCard
@@ -772,16 +774,18 @@ export default function SearchScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
       }
       ListEmptyComponent={
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            {debouncedQuery ? "We couldn't find any users" : 'No users available'}
-          </Text>
-          {debouncedQuery && (
-            <Text style={styles.emptySubtext}>
-              Try searching for a different name or username
+        loading ? null : (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>
+              {debouncedQuery ? "No users match your search" : 'No users to show yet'}
             </Text>
-          )}
-        </View>
+            <Text style={styles.emptySubtext}>
+              {debouncedQuery 
+                ? 'Try a different name or username'
+                : 'Be the first to invite your friends!'}
+            </Text>
+          </View>
+        )
       }
       renderItem={({ item }) => (
         <UserCard
@@ -815,6 +819,8 @@ export default function SearchScreen() {
             placeholderTextColor="#999"
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onSubmitEditing={handleSearchSubmit}
+            returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -822,6 +828,7 @@ export default function SearchScreen() {
             <TouchableOpacity
               onPress={() => {
                 setSearchQuery('');
+                setDebouncedQuery('');
                 searchInputRef.current?.blur();
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
