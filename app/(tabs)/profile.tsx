@@ -222,10 +222,13 @@ export default function ProfileScreen() {
 
             {/* Stats Row */}
             <View style={styles.statsRow}>
-              <View style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push(`/user/${user?.id}/followers`)}
+                activeOpacity={0.7}>
                 <Text style={styles.statNumber}>{followerCount}</Text>
                 <Text style={styles.statLabel}>Followers</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.statDivider} />
               <TouchableOpacity
                 style={styles.statItem}

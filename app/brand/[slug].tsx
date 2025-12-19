@@ -230,8 +230,8 @@ export default function BrandProfileScreen() {
 
     const wasLiked = product.is_liked;
 
-    // Optimistic update
-    setProducts((prev) =>
+    // Optimistic update - update both products and filteredProducts
+    const updateProducts = (prev: Product[]) =>
       prev.map((p) =>
         p.id === productId
           ? {
@@ -240,8 +240,10 @@ export default function BrandProfileScreen() {
               like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
             }
           : p
-      )
-    );
+      );
+
+    setProducts(updateProducts);
+    setFilteredProducts(updateProducts);
 
     try {
       if (wasLiked) {
@@ -262,8 +264,8 @@ export default function BrandProfileScreen() {
       }
     } catch (err) {
       console.error('Error toggling like:', err);
-      // Revert on error
-      setProducts((prev) =>
+      // Revert on error - update both products and filteredProducts
+      const revertProducts = (prev: Product[]) =>
         prev.map((p) =>
           p.id === productId
             ? {
@@ -272,8 +274,10 @@ export default function BrandProfileScreen() {
                 like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
               }
             : p
-        )
-      );
+        );
+
+      setProducts(revertProducts);
+      setFilteredProducts(revertProducts);
     }
   };
 

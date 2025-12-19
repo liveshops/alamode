@@ -184,45 +184,86 @@ export default function SearchScreen() {
     try {
       const offset = reset ? 0 : forYouOffset;
       
-      // Use personalized recommendations algorithm
-      const { data, error } = await supabase.rpc('get_recommendations', {
-        target_user_id: user!.id,
-        result_limit: 20,
-        offset_val: offset,
-      });
+      let productsData: any[] = [];
 
-      if (error) throw error;
-
-      let productsData = data || [];
-
-      // Apply search filter client-side if needed
+      // If searching, query products directly with server-side filter
       if (debouncedQuery) {
-        productsData = productsData.filter((p: any) =>
-          p.name.toLowerCase().includes(debouncedQuery.toLowerCase())
-        );
-      }
+        const { data: searchData, error: searchError } = await supabase
+          .from('products')
+          .select(`
+            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name,
+            brand:brands(id, name, slug)
+          `)
+          .ilike('name', `%${debouncedQuery}%`)
+          .eq('is_available', true)
+          .order('like_count', { ascending: false })
+          .limit(50);
 
-      // Map to expected format with nested brand object
-      const mappedProducts: RecommendedProduct[] = productsData.map((item: any) => ({
-        ...item,
-        id: item.product_id,
-        is_liked: item.is_liked_by_user,
-        brand: {
-          id: item.brand_id,
-          name: item.brand_name,
-          slug: item.brand_slug,
-        },
-      }));
+        if (searchError) throw searchError;
 
-      if (reset) {
-        setForYouProducts(mappedProducts);
-        setForYouOffset(20);
+        // Check which products are liked
+        let products = searchData || [];
+        if (user && products.length > 0) {
+          const { data: likedData } = await supabase
+            .from('user_likes_products')
+            .select('product_id')
+            .eq('user_id', user.id)
+            .in('product_id', products.map((p: any) => p.id));
+
+          const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+          products = products.map((p: any) => ({ 
+            ...p, 
+            is_liked: likedIds.has(p.id),
+            is_liked_by_user: likedIds.has(p.id),
+            product_id: p.id,
+            brand_id: p.brand?.id,
+            brand_name: p.brand?.name,
+            brand_slug: p.brand?.slug,
+          }));
+        }
+
+        productsData = products;
+        setForYouProducts(productsData.map((item: any) => ({
+          ...item,
+          id: item.id,
+          is_liked: item.is_liked,
+          brand: item.brand || { id: item.brand_id, name: item.brand_name, slug: item.brand_slug },
+        })));
+        setForYouHasMore(false); // No pagination for search results
       } else {
-        setForYouProducts(prev => [...prev, ...mappedProducts]);
-        setForYouOffset(prev => prev + 20);
+        // No search - use personalized recommendations algorithm
+        const { data, error } = await supabase.rpc('get_recommendations', {
+          target_user_id: user!.id,
+          result_limit: 20,
+          offset_val: offset,
+        });
+
+        if (error) throw error;
+
+        productsData = data || [];
+
+        // Map to expected format with nested brand object
+        const mappedProducts: RecommendedProduct[] = productsData.map((item: any) => ({
+          ...item,
+          id: item.product_id,
+          is_liked: item.is_liked_by_user,
+          brand: {
+            id: item.brand_id,
+            name: item.brand_name,
+            slug: item.brand_slug,
+          },
+        }));
+
+        if (reset) {
+          setForYouProducts(mappedProducts);
+          setForYouOffset(20);
+        } else {
+          setForYouProducts(prev => [...prev, ...mappedProducts]);
+          setForYouOffset(prev => prev + 20);
+        }
+        
+        setForYouHasMore(mappedProducts.length === 20);
       }
-      
-      setForYouHasMore(mappedProducts.length === 20);
     } catch (err) {
       console.error('Error fetching recommendations:', err);
     }
@@ -267,50 +308,92 @@ export default function SearchScreen() {
     try {
       const currentOffset = reset ? 0 : brandsOffset;
 
-      // Use optimized database function with pagination
-      const { data, error } = await supabase
-        .rpc('get_shop_brands', {
-          p_user_id: user!.id,
-          p_products_per_brand: 6,
-          p_limit: BRANDS_PER_PAGE,
-          p_offset: currentOffset
-        });
+      let brandsData: any[] = [];
 
-      if (error) throw error;
-
-      let brandsData = data || [];
-
-      // Apply search filter client-side
+      // If searching, query brands directly with server-side filter
       if (debouncedQuery) {
-        brandsData = brandsData.filter((b: any) => 
-          b.name.toLowerCase().includes(debouncedQuery.toLowerCase())
+        const { data: searchData, error: searchError } = await supabase
+          .from('brands')
+          .select('id, name, slug, logo_url, follower_count')
+          .ilike('name', `%${debouncedQuery}%`)
+          .order('follower_count', { ascending: false })
+          .limit(50);
+
+        if (searchError) throw searchError;
+
+        // For searched brands, fetch their products separately
+        const brandsWithProducts = await Promise.all(
+          (searchData || []).map(async (brand: any) => {
+            const { data: productsData } = await supabase
+              .from('products')
+              .select(`
+                id, name, price, sale_price, currency, image_url, product_url, like_count,
+                brand:brands(id, name, slug, logo_url)
+              `)
+              .eq('brand_id', brand.id)
+              .eq('is_available', true)
+              .order('like_count', { ascending: false })
+              .limit(6);
+
+            // Check which products are liked
+            let products = productsData || [];
+            if (user && products.length > 0) {
+              const { data: likedData } = await supabase
+                .from('user_likes_products')
+                .select('product_id')
+                .eq('user_id', user.id)
+                .in('product_id', products.map(p => p.id));
+
+              const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+              products = products.map(p => ({ ...p, is_liked: likedIds.has(p.id) }));
+            }
+
+            return { ...brand, products };
+          })
         );
-      }
 
-      // Process brands data
-      const brandsWithProducts: BrandWithProducts[] = brandsData.map((brand: any) => ({
-        id: brand.id,
-        name: brand.name,
-        slug: brand.slug,
-        logo_url: brand.logo_url,
-        follower_count: brand.follower_count,
-        products: brand.products || [],
-      }));
-
-      if (reset) {
-        setBrands(brandsWithProducts);
-        setBrandsOffset(BRANDS_PER_PAGE);
+        brandsData = brandsWithProducts;
+        setBrands(brandsData);
+        setBrandsHasMore(false); // No pagination for search results
       } else {
-        // Filter out duplicates
-        setBrands(prev => {
-          const existingIds = new Set(prev.map(b => b.id));
-          const newBrands = brandsWithProducts.filter(b => !existingIds.has(b.id));
-          return [...prev, ...newBrands];
-        });
-        setBrandsOffset(prev => prev + BRANDS_PER_PAGE);
-      }
+        // No search - use optimized paginated function
+        const { data, error } = await supabase
+          .rpc('get_shop_brands', {
+            p_user_id: user!.id,
+            p_products_per_brand: 6,
+            p_limit: BRANDS_PER_PAGE,
+            p_offset: currentOffset
+          });
 
-      setBrandsHasMore(brandsWithProducts.length === BRANDS_PER_PAGE);
+        if (error) throw error;
+
+        brandsData = data || [];
+
+        // Process brands data
+        const brandsWithProducts: BrandWithProducts[] = brandsData.map((brand: any) => ({
+          id: brand.id,
+          name: brand.name,
+          slug: brand.slug,
+          logo_url: brand.logo_url,
+          follower_count: brand.follower_count,
+          products: brand.products || [],
+        }));
+
+        if (reset) {
+          setBrands(brandsWithProducts);
+          setBrandsOffset(BRANDS_PER_PAGE);
+        } else {
+          // Filter out duplicates
+          setBrands(prev => {
+            const existingIds = new Set(prev.map(b => b.id));
+            const newBrands = brandsWithProducts.filter(b => !existingIds.has(b.id));
+            return [...prev, ...newBrands];
+          });
+          setBrandsOffset(prev => prev + BRANDS_PER_PAGE);
+        }
+
+        setBrandsHasMore(brandsWithProducts.length === BRANDS_PER_PAGE);
+      }
     } catch (err) {
       console.error('Error fetching brands:', err);
     } finally {

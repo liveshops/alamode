@@ -37,7 +37,7 @@ export default function ProductDetailScreen() {
   const [likeCount, setLikeCount] = useState(0);
 
   // Fetch similar products with pagination
-  const { products: similarProducts, loading: loadingSimilar, loadingMore: loadingMoreSimilar, hasMore: hasMoreSimilar, loadMore: loadMoreSimilar } = useSimilarProducts(id || null, 6);
+  const { products: similarProducts, loading: loadingSimilar, loadingMore: loadingMoreSimilar, hasMore: hasMoreSimilar, loadMore: loadMoreSimilar, toggleLike: toggleSimilarLike } = useSimilarProducts(id || null, 6);
 
   const handleSimilarScroll = (event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
@@ -189,8 +189,22 @@ export default function ProductDetailScreen() {
     );
   }
 
-  const displayPrice = product.sale_price || product.price;
-  const hasDiscount = !!product.sale_price;
+  // Determine which price is lower (the actual sale/current price)
+  const hasDiscount = product.sale_price != null && product.sale_price !== product.price;
+  
+  // Always show the lower price as current, higher as original (struck through)
+  let currentPrice = product.price;
+  let originalPrice = product.price;
+  
+  if (hasDiscount && product.sale_price != null) {
+    if (product.sale_price < product.price) {
+      currentPrice = product.sale_price;
+      originalPrice = product.price;
+    } else {
+      currentPrice = product.price;
+      originalPrice = product.sale_price;
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -278,9 +292,9 @@ export default function ProductDetailScreen() {
           {/* Price and Brand Row */}
           <View style={styles.priceRow}>
             <View style={styles.priceContainer}>
-              <Text style={styles.price}>${displayPrice.toFixed(2)}</Text>
+              <Text style={styles.price}>${currentPrice.toFixed(2)}</Text>
               {hasDiscount && (
-                <Text style={styles.originalPrice}>${product.price.toFixed(2)}</Text>
+                <Text style={styles.originalPrice}>${originalPrice.toFixed(2)}</Text>
               )}
             </View>
             <TouchableOpacity 
@@ -320,12 +334,22 @@ export default function ProductDetailScreen() {
                         style={styles.similarImage} 
                         resizeMode="cover" 
                       />
-                      <View style={styles.similarHeartBadge}>
-                        <Ionicons name="heart-outline" size={12} color="#000" />
+                      <TouchableOpacity 
+                        style={styles.similarHeartBadge}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          toggleSimilarLike(item.id);
+                        }}
+                        activeOpacity={0.7}>
+                        <Ionicons 
+                          name={item.is_liked ? "heart" : "heart-outline"} 
+                          size={12} 
+                          color={item.is_liked ? "#ff4444" : "#000"} 
+                        />
                         {item.like_count > 0 && (
                           <Text style={styles.similarLikeCount}>{item.like_count}</Text>
                         )}
-                      </View>
+                      </TouchableOpacity>
                     </View>
                     <Text style={styles.similarProductName} numberOfLines={1}>
                       {item.name}

@@ -228,6 +228,7 @@ class BaseScraper {
 
   /**
    * Save or update product in database
+   * Handles duplicate key errors by retrying as update
    */
   async upsertProduct(productData, categoryNames = []) {
     // Validate product
@@ -238,13 +239,28 @@ class BaseScraper {
     }
 
     try {
-      // Check if product already exists
-      const { data: existing } = await this.supabase
+      // Check if product already exists by external_id
+      let existing = null;
+      const { data: byExternalId } = await this.supabase
         .from('products')
         .select('id, price')
         .eq('brand_id', productData.brand_id)
         .eq('external_id', productData.external_id)
         .single();
+
+      existing = byExternalId;
+
+      // Also check by name to prevent name-based duplicates
+      if (!existing) {
+        const { data: byName } = await this.supabase
+          .from('products')
+          .select('id, price')
+          .eq('brand_id', productData.brand_id)
+          .eq('name', productData.name)
+          .single();
+
+        existing = byName;
+      }
 
       let productId;
       let isNew = false;
@@ -268,9 +284,38 @@ class BaseScraper {
           .select('id')
           .single();
 
-        if (error) throw error;
-        productId = data.id;
-        isNew = true;
+        if (error) {
+          // Check if it's a duplicate key error - retry as update
+          if (error.code === '23505' || error.message.includes('duplicate key')) {
+            // Find the existing product and update it
+            const { data: duplicateProduct } = await this.supabase
+              .from('products')
+              .select('id')
+              .eq('brand_id', productData.brand_id)
+              .eq('name', productData.name)
+              .single();
+
+            if (duplicateProduct) {
+              const { data: updateData, error: updateError } = await this.supabase
+                .from('products')
+                .update(productData)
+                .eq('id', duplicateProduct.id)
+                .select('id')
+                .single();
+
+              if (updateError) throw updateError;
+              productId = updateData.id;
+              // This is an update, not new
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        } else {
+          productId = data.id;
+          isNew = true;
+        }
       }
 
       // Category classification is now handled automatically in normalizeProduct()

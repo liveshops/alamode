@@ -1,7 +1,7 @@
 import { Product } from '@/hooks/useProducts';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ProductCardProps {
   product: Product;
@@ -11,6 +11,17 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductCardProps) {
+  const [imageWidth, setImageWidth] = useState(0);
+  
+  // Combine main image with additional images
+  const allImages = [product.image_url, ...(product.additional_images || [])].filter(Boolean);
+  const hasMultipleImages = allImages.length > 1;
+  
+  const handleLayout = (event: any) => {
+    const { width } = event.nativeEvent.layout;
+    setImageWidth(width);
+  };
+  
   // Determine which price is lower (the actual sale/current price)
   const hasDiscount = product.sale_price != null && product.sale_price !== product.price;
   
@@ -30,10 +41,36 @@ export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductC
   }
 
   return (
-    <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.9}>
-      {/* Product Image */}
-      <View style={styles.imageContainer}>
-        <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
+    <View style={styles.container}>
+      {/* Product Image Carousel */}
+      <View style={styles.imageContainer} onLayout={handleLayout}>
+        {hasMultipleImages && imageWidth > 0 ? (
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            bounces={true}
+            alwaysBounceHorizontal={true}
+            nestedScrollEnabled={true}
+            style={styles.imageScrollView}>
+            {allImages.map((imageUrl, index) => (
+              <TouchableOpacity
+                key={index}
+                activeOpacity={0.9}
+                onPress={onPress}>
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={[styles.image, { width: imageWidth }]}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
+            <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
+          </TouchableOpacity>
+        )}
 
         {/* Heart Icon */}
         <TouchableOpacity
@@ -59,7 +96,7 @@ export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductC
       </View>
 
       {/* Product Info */}
-      <View style={styles.infoContainer}>
+      <TouchableOpacity style={styles.infoContainer} onPress={onPress} activeOpacity={0.7}>
         <Text style={styles.productName} numberOfLines={2}>
           {product.name}
         </Text>
@@ -82,8 +119,8 @@ export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductC
           )}
           <Text style={styles.currentPrice}>${currentPrice.toFixed(2)}</Text>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -98,6 +135,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 0,
     overflow: 'hidden',
+  },
+  imageScrollView: {
+    flex: 1,
   },
   image: {
     width: '100%',

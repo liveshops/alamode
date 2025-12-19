@@ -9,6 +9,7 @@ export interface RecommendedProduct {
   price: number;
   sale_price: number | null;
   image_url: string;
+  additional_images: string[] | null;
   product_url: string;
   brand_id: string;
   brand_name: string;
@@ -41,6 +42,7 @@ export interface SimilarProduct {
   like_count: number;
   similarity_score: number;
   similarity_reason: string;
+  is_liked?: boolean;
   brand: {
     id: string;
     name: string;
@@ -113,6 +115,17 @@ export function useRecommendations(initialLimit = 20) {
           slug: item.brand_slug,
         },
       }));
+
+      // Record impressions for shown products (fire and forget)
+      if (mappedProducts.length > 0) {
+        const productIds = mappedProducts.map(p => p.product_id);
+        supabase.rpc('record_product_impressions', {
+          p_user_id: user.id,
+          p_product_ids: productIds,
+        }).then(({ error }) => {
+          if (error) console.log('Impression tracking skipped:', error.message);
+        });
+      }
 
       if (loadMore) {
         setProducts((prev) => [...prev, ...mappedProducts]);
@@ -272,15 +285,32 @@ export function useSimilarProducts(productId: string | null, initialLimit = 6) {
       if (rpcError) throw rpcError;
 
       // Map to expected format with nested brand object
-      const mappedProducts: SimilarProduct[] = (data || []).map((item: any) => ({
+      let mappedProducts: SimilarProduct[] = (data || []).map((item: any) => ({
         ...item,
         id: item.product_id,
+        is_liked: false,
         brand: {
           id: item.brand_id,
           name: item.brand_name,
           slug: item.brand_slug,
         },
       }));
+
+      // Fetch like status for products if user is logged in
+      if (user && mappedProducts.length > 0) {
+        const productIds = mappedProducts.map(p => p.id);
+        const { data: likedData } = await supabase
+          .from('user_likes_products')
+          .select('product_id')
+          .eq('user_id', user.id)
+          .in('product_id', productIds);
+
+        const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+        mappedProducts = mappedProducts.map(p => ({
+          ...p,
+          is_liked: likedIds.has(p.id),
+        }));
+      }
 
       if (reset) {
         setProducts(mappedProducts);
@@ -315,6 +345,52 @@ export function useSimilarProducts(productId: string | null, initialLimit = 6) {
     fetchSimilarProducts(true);
   }, [productId]);
 
+  const toggleLike = async (targetProductId: string) => {
+    if (!user) return;
+
+    const product = products.find(p => p.id === targetProductId);
+    if (!product) return;
+
+    const wasLiked = product.is_liked ?? false;
+
+    // Optimistic update
+    setProducts(prev =>
+      prev.map(p =>
+        p.id === targetProductId
+          ? { ...p, is_liked: !wasLiked, like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1 }
+          : p
+      )
+    );
+
+    try {
+      if (wasLiked) {
+        await supabase
+          .from('user_likes_products')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('product_id', targetProductId);
+      } else {
+        const { error } = await supabase
+          .from('user_likes_products')
+          .upsert(
+            { user_id: user.id, product_id: targetProductId },
+            { onConflict: 'user_id,product_id', ignoreDuplicates: true }
+          );
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.error('Error toggling like:', err);
+      // Revert on error
+      setProducts(prev =>
+        prev.map(p =>
+          p.id === targetProductId
+            ? { ...p, is_liked: wasLiked, like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1) }
+            : p
+        )
+      );
+    }
+  };
+
   return {
     products,
     loading,
@@ -323,5 +399,6 @@ export function useSimilarProducts(productId: string | null, initialLimit = 6) {
     hasMore,
     refetch: () => fetchSimilarProducts(true),
     loadMore,
+    toggleLike,
   };
 }

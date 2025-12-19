@@ -6,14 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Image,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -306,10 +306,13 @@ export default function UserProfileScreen() {
 
             {/* Stats Row */}
             <View style={styles.statsRow}>
-              <View style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push(`/user/${id}/followers`)}
+                activeOpacity={0.7}>
                 <Text style={styles.statNumber}>{userProfile.follower_count}</Text>
                 <Text style={styles.statLabel}>Followers</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.statDivider} />
               <TouchableOpacity
                 style={styles.statItem}

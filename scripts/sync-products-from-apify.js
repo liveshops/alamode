@@ -217,18 +217,45 @@ async function getCategoryIds(categoryNames) {
 }
 
 /**
- * Upsert product and handle category associations
+ * Upsert product using fallback method for deduplication
+ * Checks both external_id AND name to prevent duplicates
+ * Note: Using fallback directly since RPC function has type compatibility issues with text[] columns
  */
 async function upsertProduct(productData, categoryIds) {
+  return await upsertProductFallback(productData, categoryIds);
+}
+
+/**
+ * Fallback upsert for when database function isn't available yet
+ * Checks both external_id AND name to prevent duplicates
+ * Handles duplicate key errors by retrying as update
+ */
+async function upsertProductFallback(productData, categoryIds) {
   // First, try to find existing product by brand_id + external_id
-  const { data: existing } = await supabase
+  let existing = null;
+  const { data: byExternalId } = await supabase
     .from('products')
     .select('id')
     .eq('brand_id', productData.brand_id)
     .eq('external_id', productData.external_id)
     .single();
   
+  existing = byExternalId;
+  
+  // If not found by external_id, also check by name (prevents name-based duplicates)
+  if (!existing) {
+    const { data: byName } = await supabase
+      .from('products')
+      .select('id')
+      .eq('brand_id', productData.brand_id)
+      .eq('name', productData.name)
+      .single();
+    
+    existing = byName;
+  }
+  
   let productId;
+  let isNew = false;
   
   if (existing) {
     // Update existing product
@@ -254,22 +281,52 @@ async function upsertProduct(productData, categoryIds) {
       .single();
     
     if (error) {
-      console.error(`Error inserting product ${productData.name}:`, error.message);
-      return { success: false, isNew: true };
+      // Check if it's a duplicate key error - retry as update
+      if (error.code === '23505' || error.message.includes('duplicate key')) {
+        // Find the existing product and update it
+        const { data: duplicateProduct } = await supabase
+          .from('products')
+          .select('id')
+          .eq('brand_id', productData.brand_id)
+          .eq('name', productData.name)
+          .single();
+        
+        if (duplicateProduct) {
+          const { data: updateData, error: updateError } = await supabase
+            .from('products')
+            .update(productData)
+            .eq('id', duplicateProduct.id)
+            .select('id')
+            .single();
+          
+          if (updateError) {
+            console.error(`Error updating duplicate product ${productData.name}:`, updateError.message);
+            return { success: false, isNew: false };
+          }
+          
+          productId = updateData.id;
+          // Mark as update, not new
+        } else {
+          console.error(`Error inserting product ${productData.name}:`, error.message);
+          return { success: false, isNew: true };
+        }
+      } else {
+        console.error(`Error inserting product ${productData.name}:`, error.message);
+        return { success: false, isNew: true };
+      }
+    } else {
+      productId = data.id;
+      isNew = true;
     }
-    
-    productId = data.id;
   }
   
   // Handle category associations
-  if (categoryIds.length > 0) {
-    // Delete existing associations
+  if (productId && categoryIds.length > 0) {
     await supabase
       .from('product_categories')
       .delete()
       .eq('product_id', productId);
     
-    // Insert new associations
     const categoryAssociations = categoryIds.map(catId => ({
       product_id: productId,
       category_id: catId
@@ -280,7 +337,7 @@ async function upsertProduct(productData, categoryIds) {
       .insert(categoryAssociations);
   }
   
-  return { success: true, isNew: !existing, productId };
+  return { success: true, isNew, productId };
 }
 
 /**
