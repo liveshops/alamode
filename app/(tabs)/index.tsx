@@ -1,3 +1,4 @@
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRecommendations } from '@/hooks/useRecommendations';
@@ -11,8 +12,15 @@ export default function HomeScreen() {
   const { profile } = useAuth();
   const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike } = useRecommendations(20);
   const [refreshing, setRefreshing] = useState(false);
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
+
+  const handleLongPress = (product: { id: string; name: string }) => {
+    setSelectedProduct(product);
+    setCollectionSheetVisible(true);
+  };
 
   // Scroll to top and refresh when home tab is pressed while already on home
   useEffect(() => {
@@ -131,10 +139,25 @@ export default function HomeScreen() {
               onPress={() => handleProductPress(item.id)}
               onLike={() => toggleLike(item.id)}
               onBrandPress={() => handleBrandPress(item.brand.slug)}
+              onLongPress={() => handleLongPress({ id: item.id, name: item.name })}
             />
           </View>
         )}
       />
+
+      {/* Add to Collection Sheet */}
+      {selectedProduct && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+          onClose={() => {
+            setCollectionSheetVisible(false);
+            setSelectedProduct(null);
+          }}
+          onAdded={() => {}}
+        />
+      )}
     </View>
   );
 }

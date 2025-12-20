@@ -503,6 +503,20 @@ async function syncBrandProducts(brandSlug) {
       // Transform product data
       const productData = transformApifyProduct(apifyProduct, brand.id);
       
+      // Validate image URL - skip blob: URLs (invalid browser-generated URLs)
+      if (!productData.image_url || productData.image_url.startsWith('blob:')) {
+        console.log(`  ⚠️  Skipping "${productData.name}" - invalid image URL (blob)`);
+        productsFailed++;
+        continue;
+      }
+      
+      // Filter out any blob URLs from additional_images
+      if (productData.additional_images) {
+        productData.additional_images = productData.additional_images.filter(
+          url => url && !url.startsWith('blob:')
+        );
+      }
+      
       // Get category IDs from product tags/categories
       const sourceCats = [
         ...(apifyProduct.categories || []),

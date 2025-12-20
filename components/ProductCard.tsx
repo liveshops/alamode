@@ -1,16 +1,18 @@
 import { Product } from '@/hooks/useProducts';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import React, { memo, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ProductCardProps {
   product: Product;
   onPress: () => void;
   onLike: () => void;
   onBrandPress?: () => void;
+  onLongPress?: () => void;
 }
 
-export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductCardProps) {
+export const ProductCard = memo(function ProductCard({ product, onPress, onLike, onBrandPress, onLongPress }: ProductCardProps) {
   const [imageWidth, setImageWidth] = useState(0);
   
   // Combine main image with additional images
@@ -54,22 +56,36 @@ export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductC
             nestedScrollEnabled={true}
             style={styles.imageScrollView}>
             {allImages.map((imageUrl, index) => (
-              <TouchableOpacity
+              <Pressable
                 key={index}
-                activeOpacity={0.9}
-                onPress={onPress}>
+                onPress={onPress}
+                onLongPress={() => {
+                  if (onLongPress) {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onLongPress();
+                  }
+                }}
+                delayLongPress={400}>
                 <Image
                   source={{ uri: imageUrl }}
                   style={[styles.image, { width: imageWidth }]}
                   resizeMode="cover"
                 />
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </ScrollView>
         ) : (
-          <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
+          <Pressable
+            onPress={onPress}
+            onLongPress={() => {
+              if (onLongPress) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                onLongPress();
+              }
+            }}
+            delayLongPress={400}>
             <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
-          </TouchableOpacity>
+          </Pressable>
         )}
 
         {/* Heart Icon */}
@@ -122,12 +138,12 @@ export function ProductCard({ product, onPress, onLike, onBrandPress }: ProductC
       </TouchableOpacity>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   imageContainer: {
     position: 'relative',
@@ -206,3 +222,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+ProductCard.displayName = 'ProductCard';

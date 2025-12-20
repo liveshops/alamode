@@ -1,5 +1,8 @@
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
+import { CollectionRow } from '@/components/CollectionRow';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCollections } from '@/hooks/useCollections';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,9 +32,14 @@ export default function ProfileScreen() {
   const [followedBrandsCount, setFollowedBrandsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'liked' | 'collections' | 'brands'>('liked');
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const shouldRestoreScroll = useRef(false);
+
+  const { collections, refetch: refetchCollections } = useCollections();
 
   useFocusEffect(
     useCallback(() => {
@@ -160,6 +168,15 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleLongPress = (product: Product) => {
+    setSelectedProduct({ id: product.id, name: product.name });
+    setCollectionSheetVisible(true);
+  };
+
+  const handleAddedToCollection = (collectionName: string) => {
+    refetchCollections();
+  };
+
   if (loading && !refreshing) {
     return (
       <View style={[styles.centerContainer, { paddingTop: insets.top }]}>
@@ -187,7 +204,6 @@ export default function ProfileScreen() {
 
       <FlatList
         ref={flatListRef}
-        data={likedProducts}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.productRow}
@@ -257,20 +273,33 @@ export default function ProfileScreen() {
 
             {/* Category Tabs */}
             <View style={styles.categoryTabs}>
-              <View style={styles.categoryTab}>
-                <View style={styles.categoryBadge}>
-                  <Ionicons name="heart" size={16} color="#fff" />
-                  <Text style={styles.categoryBadgeText}>{likedItemsCount}</Text>
+              <TouchableOpacity
+                style={styles.categoryTab}
+                onPress={() => setActiveTab('liked')}
+                activeOpacity={0.7}>
+                <View style={[styles.categoryBadge, activeTab !== 'liked' && styles.categoryBadgeInactive]}>
+                  <Ionicons name="heart" size={16} color={activeTab === 'liked' ? '#fff' : '#666'} />
+                  <Text style={[styles.categoryBadgeText, activeTab !== 'liked' && styles.categoryBadgeTextInactive]}>{likedItemsCount}</Text>
                 </View>
-                <Text style={styles.categoryTabText}>Liked Products</Text>
-              </View>
+                <Text style={[styles.categoryTabText, activeTab === 'liked' && styles.categoryTabTextActive]}>Liked Products</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.categoryTab}
+                onPress={() => setActiveTab('collections')}
+                activeOpacity={0.7}>
+                <View style={[styles.categoryBadge, activeTab !== 'collections' && styles.categoryBadgeInactive]}>
+                  <Ionicons name="folder" size={16} color={activeTab === 'collections' ? '#fff' : '#666'} />
+                  <Text style={[styles.categoryBadgeText, activeTab !== 'collections' && styles.categoryBadgeTextInactive]}>{collections.length}</Text>
+                </View>
+                <Text style={[styles.categoryTabText, activeTab === 'collections' && styles.categoryTabTextActive]}>Collections</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.categoryTab}
                 onPress={() => router.push(`/user/${user?.id}/brands`)}
                 activeOpacity={0.7}>
-                <View style={styles.categoryBadge}>
-                  <Ionicons name="heart" size={16} color="#fff" />
-                  <Text style={styles.categoryBadgeText}>{followedBrandsCount}</Text>
+                <View style={[styles.categoryBadge, activeTab !== 'brands' && styles.categoryBadgeInactive]}>
+                  <Ionicons name="heart" size={16} color={activeTab === 'brands' ? '#fff' : '#666'} />
+                  <Text style={[styles.categoryBadgeText, activeTab !== 'brands' && styles.categoryBadgeTextInactive]}>{followedBrandsCount}</Text>
                 </View>
                 <Text style={styles.categoryTabText}>Favorite Brands</Text>
               </TouchableOpacity>
@@ -278,25 +307,61 @@ export default function ProfileScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="heart-outline" size={48} color="#ccc" />
-            <Text style={styles.emptyText}>No liked products yet</Text>
-            <Text style={styles.emptySubtext}>
-              Products you heart will appear here
-            </Text>
-          </View>
+          activeTab === 'liked' ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="heart-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>No liked products yet</Text>
+              <Text style={styles.emptySubtext}>
+                Products you heart will appear here
+              </Text>
+            </View>
+          ) : activeTab === 'collections' ? (
+            collections.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="folder-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyText}>No collections yet</Text>
+                <Text style={styles.emptySubtext}>
+                  Long press on any product to create your first collection
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.collectionsContainer}>
+                {collections.map((collection) => (
+                  <CollectionRow key={collection.id} collection={collection} />
+                ))}
+              </View>
+            )
+          ) : null
         }
-        renderItem={({ item }) => (
-          <View style={styles.productCardWrapper}>
-            <ProductCard
-              product={item}
-              onPress={() => handleProductPress(item.id)}
-              onLike={() => handleToggleLike(item.id)}
-              onBrandPress={() => handleBrandPress(item.brand.slug)}
-            />
-          </View>
-        )}
+        renderItem={({ item }) => 
+          activeTab === 'liked' ? (
+            <View style={styles.productCardWrapper}>
+              <ProductCard
+                product={item}
+                onPress={() => handleProductPress(item.id)}
+                onLike={() => handleToggleLike(item.id)}
+                onBrandPress={() => handleBrandPress(item.brand.slug)}
+                onLongPress={() => handleLongPress(item)}
+              />
+            </View>
+          ) : null
+        }
+        data={activeTab === 'liked' ? likedProducts : []}
       />
+
+      {/* Add to Collection Sheet */}
+      {selectedProduct && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+          onClose={() => {
+            setCollectionSheetVisible(false);
+            setSelectedProduct(null);
+          }}
+          onAdded={handleAddedToCollection}
+        />
+      )}
     </View>
   );
 }
@@ -422,8 +487,8 @@ const styles = StyleSheet.create({
   categoryTabs: {
     flexDirection: 'row',
     alignSelf: 'stretch',
-    marginTop: 24,
-    marginBottom: 24,
+    marginTop: 12,
+    marginBottom: 12,
     gap: 12,
   },
   categoryTab: {
@@ -448,7 +513,17 @@ const styles = StyleSheet.create({
   categoryTabText: {
     fontSize: 14,
     fontWeight: '500',
+    color: '#666',
+  },
+  categoryTabTextActive: {
     color: '#000',
+    fontWeight: '600',
+  },
+  categoryBadgeInactive: {
+    backgroundColor: '#f0f0f0',
+  },
+  categoryBadgeTextInactive: {
+    color: '#666',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -481,7 +556,10 @@ const styles = StyleSheet.create({
   productCardWrapper: {
     flex: 1,
     maxWidth: '48%',
-    marginBottom: 24,
+    marginBottom: 4,
+  },
+  collectionsContainer: {
+    paddingTop: 0,
   },
   emptyContainer: {
     paddingVertical: 48,

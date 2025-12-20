@@ -1,3 +1,4 @@
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { BrandRowCard } from '@/components/BrandRowCard';
 import { ProductCard } from '@/components/ProductCard';
 import { UserCard } from '@/components/UserCard';
@@ -58,6 +59,8 @@ export default function SearchScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const [forYouOffset, setForYouOffset] = useState(0);
   const [forYouHasMore, setForYouHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -780,6 +783,10 @@ export default function SearchScreen() {
             onPress={() => handleProductPress(item.id)}
             onLike={() => handleToggleLikeProduct(item.id)}
             onBrandPress={() => handleBrandPress(item.brand.slug)}
+            onLongPress={() => {
+              setSelectedProduct({ id: item.id, name: item.name });
+              setCollectionSheetVisible(true);
+            }}
           />
         </View>
       )}
@@ -963,6 +970,20 @@ export default function SearchScreen() {
         : activeTab === 'brands'
         ? renderBrandsList()
         : renderUsersList()}
+
+      {/* Add to Collection Sheet */}
+      {selectedProduct && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+          onClose={() => {
+            setCollectionSheetVisible(false);
+            setSelectedProduct(null);
+          }}
+          onAdded={() => {}}
+        />
+      )}
     </View>
   );
 }
@@ -1041,7 +1062,7 @@ const styles = StyleSheet.create({
   productCardWrapper: {
     flex: 1,
     maxWidth: '48%',
-    marginBottom: 24,
+    marginBottom: 4,
   },
   loadingMore: {
     paddingVertical: 20,
