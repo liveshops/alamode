@@ -199,7 +199,9 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={styles.appName}>cherry</Text>
+        <TouchableOpacity onPress={() => router.replace('/')} activeOpacity={0.7}>
+          <Text style={styles.appName}>cherry</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList

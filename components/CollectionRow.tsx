@@ -11,6 +11,30 @@ import {
     View,
 } from 'react-native';
 
+/**
+ * Get recency badge text based on product created_at date
+ */
+function getRecencyBadge(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffHours < 24) return '🔥';
+  if (diffDays < 7) return `${diffDays}d`;
+  
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks}w`;
+  
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 4) return `${diffMonths}m`;
+  
+  return null;
+}
+
 interface CollectionRowProps {
   collection: Collection;
   onProductPress?: (productId: string) => void;
@@ -58,11 +82,26 @@ export const CollectionRow = memo(function CollectionRow({ collection, onProduct
               style={styles.productCard}
               onPress={() => handleProductPress(product.id)}
               activeOpacity={0.9}>
-              <Image
-                source={{ uri: product.image_url }}
-                style={styles.productImage}
-                resizeMode="cover"
-              />
+              <View style={styles.imageContainer}>
+                <Image
+                  source={{ uri: product.image_url }}
+                  style={styles.productImage}
+                  resizeMode="cover"
+                />
+                {/* Likes count badge */}
+                {product.like_count !== undefined && product.like_count > 0 && (
+                  <View style={styles.likesBadge}>
+                    <Ionicons name="heart" size={10} color="#fff" />
+                    <Text style={styles.likesText}>{product.like_count}</Text>
+                  </View>
+                )}
+                {/* Recency badge */}
+                {product.created_at && getRecencyBadge(product.created_at) && (
+                  <View style={styles.recencyBadge}>
+                    <Text style={styles.recencyText}>{getRecencyBadge(product.created_at)}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.productName} numberOfLines={1}>
                 {product.name}
               </Text>
@@ -132,11 +171,47 @@ const styles = StyleSheet.create({
   productCard: {
     width: 140,
   },
+  imageContainer: {
+    position: 'relative',
+    width: 140,
+    height: 180,
+    marginBottom: 8,
+  },
   productImage: {
     width: 140,
     height: 180,
     backgroundColor: '#f5f5f5',
-    marginBottom: 8,
+  },
+  likesBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 3,
+  },
+  likesText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  recencyBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    zIndex: 1,
+  },
+  recencyText: {
+    fontFamily: 'AbrilFatface-Regular',
+    fontSize: 14,
+    color: '#fff',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   productName: {
     fontSize: 12,

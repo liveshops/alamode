@@ -4,6 +4,37 @@ import * as Haptics from 'expo-haptics';
 import React, { memo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+/**
+ * Get recency badge text based on product created_at date
+ * Returns flame emoji for <24h, then days (1d-6d), weeks (1w-4w), months (1m+)
+ */
+function getRecencyBadge(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  // Less than 24 hours - show flame
+  if (diffHours < 24) return '🔥';
+  
+  // 1-6 days
+  if (diffDays < 7) return `${diffDays}d`;
+  
+  // 1-4 weeks
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks}w`;
+  
+  // 1-3 months
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 4) return `${diffMonths}m`;
+  
+  // Older than 3 months - don't show badge
+  return null;
+}
+
 interface ProductCardProps {
   product: Product;
   onPress: () => void;
@@ -86,6 +117,15 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
             delayLongPress={400}>
             <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
           </Pressable>
+        )}
+
+        {/* Recency Badge */}
+        {product.created_at && getRecencyBadge(product.created_at) && (
+          <View style={styles.recencyBadge}>
+            <Text style={styles.recencyText}>
+              {getRecencyBadge(product.created_at)}
+            </Text>
+          </View>
         )}
 
         {/* Heart Icon */}
@@ -181,6 +221,20 @@ const styles = StyleSheet.create({
   },
   heartBadgeLiked: {
     backgroundColor: '#000',
+  },
+  recencyBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    zIndex: 1,
+  },
+  recencyText: {
+    fontFamily: 'AbrilFatface-Regular',
+    fontSize: 16,
+    color: '#fff',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   likeCount: {
     color: '#000',

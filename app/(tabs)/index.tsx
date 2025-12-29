@@ -1,14 +1,14 @@
 import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHomeRefresh } from '@/contexts/HomeRefreshContext';
 import { useRecommendations } from '@/hooks/useRecommendations';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const { profile } = useAuth();
   const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike } = useRecommendations(20);
   const [refreshing, setRefreshing] = useState(false);
@@ -16,32 +16,24 @@ export default function HomeScreen() {
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
+  const { registerRefresh } = useHomeRefresh();
 
   const handleLongPress = (product: { id: string; name: string }) => {
     setSelectedProduct(product);
     setCollectionSheetVisible(true);
   };
 
-  // Scroll to top and refresh when home tab is pressed while already on home
-  useEffect(() => {
-    const parent = navigation.getParent();
-    if (!parent) return;
-    
-    const unsubscribe = parent.addListener('tabPress' as any, () => {
-      // Only trigger if we're on the home tab
-      const state = parent.getState();
-      if (state?.index === 0) {
-        // Scroll to top
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-        // Reset scroll position ref
-        scrollPositionRef.current = 0;
-        // Refresh the feed
-        refetch();
-      }
-    });
+  // Function to scroll to top and refresh
+  const scrollToTopAndRefresh = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    scrollPositionRef.current = 0;
+    refetch();
+  }, [refetch]);
 
-    return unsubscribe;
-  }, [navigation, refetch]);
+  // Register the refresh callback with the tab layout
+  useEffect(() => {
+    registerRefresh(scrollToTopAndRefresh);
+  }, [registerRefresh, scrollToTopAndRefresh]);
 
   // Restore scroll position when screen comes into focus
   useFocusEffect(
@@ -92,7 +84,9 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.appName}>cherry</Text>
+        <TouchableOpacity onPress={scrollToTopAndRefresh} activeOpacity={0.7}>
+          <Text style={styles.appName}>cherry</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Product Grid */}

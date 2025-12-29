@@ -50,7 +50,7 @@ class ShopifyScraper extends BaseScraper {
       let page = 1;
       let hasMore = true;
 
-      while (hasMore && page <= 10) { // Limit to 10 pages
+      while (hasMore) { // No page limit - fetch all products
         const url = `${this.brand.website_url}/products.json?limit=250&page=${page}`;
         this.log(`Fetching page ${page} from products.json`);
         

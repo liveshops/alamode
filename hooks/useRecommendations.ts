@@ -19,6 +19,7 @@ export interface RecommendedProduct {
   is_liked_by_user: boolean;
   recommendation_score: number;
   recommendation_reason: string;
+  created_at: string;
   brand: {
     id: string;
     name: string;
@@ -42,6 +43,7 @@ export interface SimilarProduct {
   like_count: number;
   similarity_score: number;
   similarity_reason: string;
+  created_at?: string;
   is_liked?: boolean;
   brand: {
     id: string;
@@ -135,7 +137,9 @@ export function useRecommendations(initialLimit = 20) {
         setOffset(mappedProducts.length);
       }
 
-      setHasMore(mappedProducts.length === initialLimit);
+      // Infinite scroll: always allow loading more as long as we got some products
+      // The backend now cycles through products, so the feed never ends
+      setHasMore(mappedProducts.length > 0);
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       setError(err instanceof Error ? err.message : 'Failed to load recommendations');

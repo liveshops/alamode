@@ -3,6 +3,30 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+/**
+ * Get recency badge text based on product created_at date
+ */
+function getRecencyBadge(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffHours < 24) return '🔥';
+  if (diffDays < 7) return `${diffDays}d`;
+  
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks}w`;
+  
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 4) return `${diffMonths}m`;
+  
+  return null;
+}
+
 interface HorizontalProductCardProps {
   product: Product;
   onPress: () => void;
@@ -29,7 +53,14 @@ export function HorizontalProductCard({
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.9}>
       {/* Product Image */}
-      <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
+      <View style={styles.imageContainer}>
+        <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
+        {product.created_at && getRecencyBadge(product.created_at) && (
+          <View style={styles.recencyBadge}>
+            <Text style={styles.recencyText}>{getRecencyBadge(product.created_at)}</Text>
+          </View>
+        )}
+      </View>
 
       {/* Product Info */}
       <View style={styles.infoContainer}>
@@ -95,10 +126,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
+  imageContainer: {
+    position: 'relative',
+    width: 80,
+    height: 120,
+  },
   image: {
     width: 80,
     height: 120,
     backgroundColor: '#f5f5f5',
+  },
+  recencyBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    zIndex: 1,
+  },
+  recencyText: {
+    fontFamily: 'AbrilFatface-Regular',
+    fontSize: 12,
+    color: '#fff',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   infoContainer: {
     flex: 1,

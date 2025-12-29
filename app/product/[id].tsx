@@ -19,6 +19,30 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+/**
+ * Get recency badge text based on product created_at date
+ */
+function getRecencyBadge(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffHours < 24) return '🔥';
+  if (diffDays < 7) return `${diffDays}d`;
+  
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks}w`;
+  
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 4) return `${diffMonths}m`;
+  
+  return null;
+}
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_HEIGHT = SCREEN_WIDTH * 1.25; // 4:5 aspect ratio
 
@@ -210,7 +234,9 @@ export default function ProductDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Text style={styles.headerTitle}>cherry</Text>
+        <TouchableOpacity onPress={() => router.replace('/')} activeOpacity={0.7}>
+          <Text style={styles.headerTitle}>cherry</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -243,6 +269,13 @@ export default function ProductDetailScreen() {
               />
             ))}
           </ScrollView>
+
+          {/* Recency Badge */}
+          {product.created_at && getRecencyBadge(product.created_at) && (
+            <View style={styles.recencyBadge}>
+              <Text style={styles.recencyText}>{getRecencyBadge(product.created_at)}</Text>
+            </View>
+          )}
 
           {/* Heart Button */}
           <TouchableOpacity
@@ -334,6 +367,11 @@ export default function ProductDetailScreen() {
                         style={styles.similarImage} 
                         resizeMode="cover" 
                       />
+                      {item.created_at && getRecencyBadge(item.created_at) && (
+                        <View style={styles.similarRecencyBadge}>
+                          <Text style={styles.similarRecencyText}>{getRecencyBadge(item.created_at)}</Text>
+                        </View>
+                      )}
                       <TouchableOpacity 
                         style={styles.similarHeartBadge}
                         onPress={(e) => {
@@ -442,6 +480,23 @@ const styles = StyleSheet.create({
   productImage: {
     width: SCREEN_WIDTH,
     height: IMAGE_HEIGHT,
+  },
+  recencyBadge: {
+    position: 'absolute',
+    bottom: 62,
+    right: 16,
+    zIndex: 10,
+    width: 44,
+    alignItems: 'center',
+  },
+  recencyText: {
+    fontFamily: 'AbrilFatface-Regular',
+    fontSize: 20,
+    color: '#fff',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 4,
+    textAlign: 'center',
   },
   heartButton: {
     position: 'absolute',
@@ -594,6 +649,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#000',
     fontWeight: '500',
+  },
+  similarRecencyBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    zIndex: 1,
+  },
+  similarRecencyText: {
+    fontFamily: 'AbrilFatface-Regular',
+    fontSize: 12,
+    color: '#fff',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   similarProductName: {
     fontSize: 11,

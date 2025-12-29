@@ -10,6 +10,8 @@ export interface CollectionPreviewProduct {
   sale_price: number | null;
   brand_name: string;
   brand_slug: string;
+  created_at?: string;
+  like_count?: number;
 }
 
 export interface Collection {

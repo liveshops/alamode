@@ -307,7 +307,9 @@ export default function BrandProfileScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>cherry</Text>
+        <TouchableOpacity onPress={() => router.replace('/')} activeOpacity={0.7}>
+          <Text style={styles.headerTitle}>cherry</Text>
+        </TouchableOpacity>
         <View style={styles.backButton} />
       </View>
 

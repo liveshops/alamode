@@ -273,7 +273,9 @@ export default function UserProfileScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.appName}>cherry</Text>
+        <TouchableOpacity onPress={() => router.replace('/')} activeOpacity={0.7}>
+          <Text style={styles.appName}>cherry</Text>
+        </TouchableOpacity>
         <View style={styles.backButton} />
       </View>
 
