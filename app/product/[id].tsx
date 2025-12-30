@@ -3,12 +3,12 @@ import { Product } from '@/hooks/useProducts';
 import { useSimilarProducts } from '@/hooks/useRecommendations';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
-    Image,
     Linking,
     ScrollView,
     Share,
@@ -265,7 +265,10 @@ export default function ProductDetailScreen() {
                 key={index}
                 source={{ uri: imageUrl }}
                 style={styles.productImage}
-                resizeMode="cover"
+                contentFit="cover"
+                transition={200}
+                priority="high"
+                cachePolicy="memory-disk"
               />
             ))}
           </ScrollView>

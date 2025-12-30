@@ -233,6 +233,17 @@ export default function SearchScreen() {
           productsData = products;
           setForYouProducts(productsData);
           setForYouHasMore(false);
+
+          // Record impressions for search results
+          if (user && productsData.length > 0) {
+            const productIds = productsData.map(p => p.id);
+            supabase.rpc('record_product_impressions', {
+              p_user_id: user.id,
+              p_product_ids: productIds,
+            }).then(({ error }) => {
+              if (error) console.log('Search impression tracking skipped:', error.message);
+            });
+          }
         } else {
           // Personalized recommendations
           const { data, error } = await supabase.rpc('get_recommendations', {
@@ -308,6 +319,17 @@ export default function SearchScreen() {
         }
         setForYouProducts(products as any);
         setForYouHasMore(false);
+
+        // Record impressions for newest products
+        if (user && products.length > 0) {
+          const productIds = products.map((p: any) => p.id);
+          supabase.rpc('record_product_impressions', {
+            p_user_id: user.id,
+            p_product_ids: productIds,
+          }).then(({ error }) => {
+            if (error) console.log('Newest impression tracking skipped:', error.message);
+          });
+        }
       } else if (filterType === 'most_liked') {
         // Most liked with time range
         const days = getTimeRangeDays();
@@ -353,6 +375,17 @@ export default function SearchScreen() {
         }
         setForYouProducts(products as any);
         setForYouHasMore(false);
+
+        // Record impressions for most liked products
+        if (user && products.length > 0) {
+          const productIds = products.map((p: any) => p.id);
+          supabase.rpc('record_product_impressions', {
+            p_user_id: user.id,
+            p_product_ids: productIds,
+          }).then(({ error }) => {
+            if (error) console.log('Most liked impression tracking skipped:', error.message);
+          });
+        }
       }
     } catch (err) {
       console.error('Error fetching products:', err);

@@ -1,8 +1,9 @@
 import { Product } from '@/hooks/useProducts';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import React, { memo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /**
  * Get recency badge text based on product created_at date
@@ -100,7 +101,10 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
                 <Image
                   source={{ uri: imageUrl }}
                   style={[styles.image, { width: imageWidth }]}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  transition={200}
+                  priority="high"
+                  cachePolicy="memory-disk"
                 />
               </Pressable>
             ))}
@@ -115,7 +119,14 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
               }
             }}
             delayLongPress={400}>
-            <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
+            <Image 
+              source={{ uri: product.image_url }} 
+              style={styles.image} 
+              contentFit="cover"
+              transition={200}
+              priority="high"
+              cachePolicy="memory-disk"
+            />
           </Pressable>
         )}
 
