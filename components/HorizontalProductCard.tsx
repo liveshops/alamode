@@ -12,10 +12,10 @@ function getRecencyBadge(createdAt: string | undefined): string | null {
   const created = new Date(createdAt);
   const now = new Date();
   const diffMs = now.getTime() - created.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffHours / 24);
   
-  if (diffHours < 24) return '🔥';
+  if (diffHours < 24) return `${Math.max(1, diffHours)}hr`;
   if (diffDays < 7) return `${diffDays}d`;
   
   const diffWeeks = Math.floor(diffDays / 7);

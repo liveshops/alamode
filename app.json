@@ -15,7 +15,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Allow cherry to access your camera to update your profile picture.",
         "NSPhotoLibraryUsageDescription": "Allow cherry to access your photo library to update your profile picture.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
@@ -53,7 +54,14 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#000000"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

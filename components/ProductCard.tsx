@@ -6,7 +6,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View 
 
 /**
  * Get recency badge text based on product created_at date
- * Returns flame emoji for <24h, then days (1d-6d), weeks (1w-4w), months (1m+)
+ * Returns hours for <24h, then days (1d-6d), weeks (1w-4w), months (1m+)
  */
 function getRecencyBadge(createdAt: string | undefined): string | null {
   if (!createdAt) return null;
@@ -14,11 +14,11 @@ function getRecencyBadge(createdAt: string | undefined): string | null {
   const created = new Date(createdAt);
   const now = new Date();
   const diffMs = now.getTime() - created.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffHours / 24);
   
-  // Less than 24 hours - show flame
-  if (diffHours < 24) return '🔥';
+  // Less than 24 hours - show hours
+  if (diffHours < 24) return `${Math.max(1, diffHours)}hr`;
   
   // 1-6 days
   if (diffDays < 7) return `${diffDays}d`;

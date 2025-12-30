@@ -1,6 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/utils/supabase';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface RecommendedProduct {
   id: string;
@@ -71,6 +71,10 @@ export function useRecommendations(initialLimit = 20) {
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [refreshSeed, setRefreshSeed] = useState(0);
+  const productsRef = useRef<RecommendedProduct[]>([]);
+  
+  // Keep ref in sync with state for deduplication checks
+  productsRef.current = products;
 
   const fetchRecommendations = useCallback(async (loadMore = false) => {
     if (!user) {
@@ -130,16 +134,67 @@ export function useRecommendations(initialLimit = 20) {
       }
 
       if (loadMore) {
-        setProducts((prev) => [...prev, ...mappedProducts]);
-        setOffset(currentOffset + mappedProducts.length);
+        // Deduplicate: filter out products already in the list
+        // Use ref to get current products without adding to deps
+        const existingIds = new Set(productsRef.current.map(p => p.id));
+        const newProducts = mappedProducts.filter(p => !existingIds.has(p.id));
+        
+        console.log(`[loadMore] API returned: ${mappedProducts.length}, New unique: ${newProducts.length}, Current total: ${productsRef.current.length}, Offset: ${currentOffset}`);
+        
+        if (newProducts.length > 0) {
+          setProducts((prev) => [...prev, ...newProducts]);
+          setOffset(currentOffset + mappedProducts.length);
+          setHasMore(true);
+        } else if (mappedProducts.length > 0) {
+          // All products were duplicates - cycle completed
+          // Immediately fetch with new seed from offset 0
+          console.log('[loadMore] Cycle complete - fetching with new seed');
+          const newSeed = Math.floor(Math.random() * 1000);
+          setRefreshSeed(newSeed);
+          
+          // Fetch next batch immediately with new seed from start
+          const { data: cycleData } = await supabase.rpc('get_recommendations', {
+            target_user_id: user.id,
+            result_limit: initialLimit,
+            offset_val: 0,
+            refresh_seed: newSeed,
+          });
+          
+          if (cycleData && cycleData.length > 0) {
+            const cycleMapped: RecommendedProduct[] = cycleData.map((item: any) => ({
+              ...item,
+              id: item.product_id,
+              is_liked: item.is_liked_by_user,
+              brand: {
+                id: item.brand_id,
+                name: item.brand_name,
+                slug: item.brand_slug,
+              },
+            }));
+            
+            // Filter duplicates from the cycle results too
+            const cycleNew = cycleMapped.filter(p => !existingIds.has(p.id));
+            console.log(`[cycle] Got ${cycleNew.length} new products with new seed`);
+            
+            if (cycleNew.length > 0) {
+              setProducts((prev) => [...prev, ...cycleNew]);
+            }
+            setOffset(initialLimit);
+            setHasMore(true);
+          } else {
+            // No more products available at all
+            setHasMore(false);
+          }
+        } else {
+          console.log('[loadMore] API returned 0 products');
+          setHasMore(false);
+        }
       } else {
+        console.log(`[initial] Loaded ${mappedProducts.length} products`);
         setProducts(mappedProducts);
         setOffset(mappedProducts.length);
+        setHasMore(mappedProducts.length > 0);
       }
-
-      // Infinite scroll: always allow loading more as long as we got some products
-      // The backend now cycles through products, so the feed never ends
-      setHasMore(mappedProducts.length > 0);
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       setError(err instanceof Error ? err.message : 'Failed to load recommendations');

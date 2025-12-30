@@ -38,7 +38,10 @@ interface User {
   follower_count: number;
 }
 
-type TabType = 'for_you' | 'most_liked' | 'brands' | 'users';
+type TabType = 'products' | 'brands' | 'users';
+type SortType = 'followed_brands' | 'all_brands';
+type FilterType = 'for_you' | 'newest' | 'most_liked';
+type TimeRangeType = '7d' | '30d' | '90d';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -46,7 +49,10 @@ export default function SearchScreen() {
   const { user } = useAuth();
   const searchInputRef = useRef<TextInput>(null);
 
-  const [activeTab, setActiveTab] = useState<TabType>('for_you');
+  const [activeTab, setActiveTab] = useState<TabType>('products');
+  const [sortType, setSortType] = useState<SortType>('all_brands');
+  const [filterType, setFilterType] = useState<FilterType>('for_you');
+  const [timeRange, setTimeRange] = useState<TimeRangeType>('30d');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -70,12 +76,10 @@ export default function SearchScreen() {
   const BRANDS_PER_PAGE = 10;
 
   // Scroll position refs for each tab
-  const forYouListRef = useRef<FlatList>(null);
-  const mostLikedListRef = useRef<FlatList>(null);
+  const productsListRef = useRef<FlatList>(null);
   const brandsListRef = useRef<FlatList>(null);
   const usersListRef = useRef<FlatList>(null);
-  const forYouScrollRef = useRef(0);
-  const mostLikedScrollRef = useRef(0);
+  const productsScrollRef = useRef(0);
   const brandsScrollRef = useRef(0);
   const usersScrollRef = useRef(0);
   const shouldRestoreScroll = useRef<TabType | null>(null);
@@ -88,17 +92,15 @@ export default function SearchScreen() {
   useFocusEffect(
     useCallback(() => {
       // Mark which tab needs scroll restoration
-      if (activeTab === 'for_you' && forYouScrollRef.current > 0) {
-        shouldRestoreScroll.current = 'for_you';
-      } else if (activeTab === 'most_liked' && mostLikedScrollRef.current > 0) {
-        shouldRestoreScroll.current = 'most_liked';
+      if (activeTab === 'products' && productsScrollRef.current > 0) {
+        shouldRestoreScroll.current = 'products';
       } else if (activeTab === 'brands' && brandsScrollRef.current > 0) {
         shouldRestoreScroll.current = 'brands';
       } else if (activeTab === 'users' && usersScrollRef.current > 0) {
         shouldRestoreScroll.current = 'users';
       }
       fetchData();
-    }, [user, debouncedQuery, activeTab])
+    }, [user, debouncedQuery, activeTab, sortType, filterType, timeRange])
   );
 
   const fetchData = async () => {
@@ -135,10 +137,8 @@ export default function SearchScreen() {
       setFollowedBrandIds(followedBrandIdsSet);
       setFollowedUserIds(followedUserIdsSet);
 
-      if (activeTab === 'for_you') {
-        await fetchForYouProducts();
-      } else if (activeTab === 'most_liked') {
-        await fetchProducts(followedBrandIdsSet);
+      if (activeTab === 'products') {
+        await fetchProductsWithFilters(followedBrandIdsSet);
       } else if (activeTab === 'brands') {
         await fetchBrands();
       } else if (activeTab === 'users') {
@@ -152,15 +152,9 @@ export default function SearchScreen() {
       if (shouldRestoreScroll.current) {
         setTimeout(() => {
           switch (shouldRestoreScroll.current) {
-            case 'for_you':
-              forYouListRef.current?.scrollToOffset({
-                offset: forYouScrollRef.current,
-                animated: false,
-              });
-              break;
-            case 'most_liked':
-              mostLikedListRef.current?.scrollToOffset({
-                offset: mostLikedScrollRef.current,
+            case 'products':
+              productsListRef.current?.scrollToOffset({
+                offset: productsScrollRef.current,
                 animated: false,
               });
               break;
@@ -183,29 +177,121 @@ export default function SearchScreen() {
     }
   };
 
-  const fetchForYouProducts = async (reset = true) => {
+  const fetchProductsWithFilters = async (followedBrandIdsSet: Set<string>, reset = true) => {
     try {
       const offset = reset ? 0 : forYouOffset;
-      
       let productsData: any[] = [];
 
-      // If searching, query products directly with server-side filter
-      if (debouncedQuery) {
-        const { data: searchData, error: searchError } = await supabase
+      // Determine time range for most_liked filter
+      const getTimeRangeDays = () => {
+        switch (timeRange) {
+          case '7d': return 7;
+          case '30d': return 30;
+          case '90d': return 90;
+          default: return 30;
+        }
+      };
+
+      if (filterType === 'for_you') {
+        // For You - personalized recommendations
+        if (debouncedQuery) {
+          // Search with optional brand filter
+          let query = supabase
+            .from('products')
+            .select(`
+              id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name,
+              brand:brands(id, name, slug)
+            `)
+            .ilike('name', `%${debouncedQuery}%`)
+            .eq('is_available', true)
+            .order('like_count', { ascending: false })
+            .limit(50);
+
+          // Apply brand filter if "Followed Brands" is selected
+          if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
+            query = query.in('brand_id', Array.from(followedBrandIdsSet));
+          }
+
+          const { data: searchData, error: searchError } = await query;
+          if (searchError) throw searchError;
+
+          let products = searchData || [];
+          if (user && products.length > 0) {
+            const { data: likedData } = await supabase
+              .from('user_likes_products')
+              .select('product_id')
+              .eq('user_id', user.id)
+              .in('product_id', products.map((p: any) => p.id));
+
+            const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+            products = products.map((p: any) => ({ 
+              ...p, 
+              is_liked: likedIds.has(p.id),
+              brand: p.brand || { id: p.brand_id, name: p.brand_name, slug: p.brand_slug },
+            }));
+          }
+          productsData = products;
+          setForYouProducts(productsData);
+          setForYouHasMore(false);
+        } else {
+          // Personalized recommendations
+          const { data, error } = await supabase.rpc('get_recommendations', {
+            target_user_id: user!.id,
+            result_limit: 20,
+            offset_val: offset,
+          });
+
+          if (error) throw error;
+
+          const mappedProducts: RecommendedProduct[] = (data || []).map((item: any) => ({
+            ...item,
+            id: item.product_id,
+            is_liked: item.is_liked_by_user,
+            brand: {
+              id: item.brand_id,
+              name: item.brand_name,
+              slug: item.brand_slug,
+            },
+          }));
+
+          // Filter by followed brands if needed
+          const filteredProducts = sortType === 'followed_brands' && followedBrandIdsSet.size > 0
+            ? mappedProducts.filter(p => followedBrandIdsSet.has(p.brand.id))
+            : mappedProducts;
+
+          if (reset) {
+            setForYouProducts(filteredProducts);
+            setForYouOffset(20);
+          } else {
+            setForYouProducts(prev => [...prev, ...filteredProducts]);
+            setForYouOffset(prev => prev + 20);
+          }
+          setForYouHasMore(mappedProducts.length === 20);
+        }
+      } else if (filterType === 'newest') {
+        // Newest products
+        let query = supabase
           .from('products')
           .select(`
-            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name,
+            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, created_at,
             brand:brands(id, name, slug)
           `)
-          .ilike('name', `%${debouncedQuery}%`)
           .eq('is_available', true)
-          .order('like_count', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(50);
 
-        if (searchError) throw searchError;
+        if (debouncedQuery) {
+          query = query.ilike('name', `%${debouncedQuery}%`);
+        }
 
-        // Check which products are liked
-        let products = searchData || [];
+        if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
+          query = query.in('brand_id', Array.from(followedBrandIdsSet));
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        let products = data || [];
         if (user && products.length > 0) {
           const { data: likedData } = await supabase
             .from('user_likes_products')
@@ -217,94 +303,67 @@ export default function SearchScreen() {
           products = products.map((p: any) => ({ 
             ...p, 
             is_liked: likedIds.has(p.id),
-            is_liked_by_user: likedIds.has(p.id),
-            product_id: p.id,
-            brand_id: p.brand?.id,
-            brand_name: p.brand?.name,
-            brand_slug: p.brand?.slug,
+            brand: p.brand || { id: null, name: 'Unknown', slug: '' },
           }));
         }
+        setForYouProducts(products as any);
+        setForYouHasMore(false);
+      } else if (filterType === 'most_liked') {
+        // Most liked with time range
+        const days = getTimeRangeDays();
+        const dateThreshold = new Date();
+        dateThreshold.setDate(dateThreshold.getDate() - days);
 
-        productsData = products;
-        setForYouProducts(productsData.map((item: any) => ({
-          ...item,
-          id: item.id,
-          is_liked: item.is_liked,
-          brand: item.brand || { id: item.brand_id, name: item.brand_name, slug: item.brand_slug },
-        })));
-        setForYouHasMore(false); // No pagination for search results
-      } else {
-        // No search - use personalized recommendations algorithm
-        const { data, error } = await supabase.rpc('get_recommendations', {
-          target_user_id: user!.id,
-          result_limit: 20,
-          offset_val: offset,
-        });
+        let query = supabase
+          .from('products')
+          .select(`
+            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name,
+            brand:brands(id, name, slug)
+          `)
+          .eq('is_available', true)
+          .gte('created_at', dateThreshold.toISOString())
+          .order('like_count', { ascending: false })
+          .limit(50);
 
+        if (debouncedQuery) {
+          query = query.ilike('name', `%${debouncedQuery}%`);
+        }
+
+        if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
+          query = query.in('brand_id', Array.from(followedBrandIdsSet));
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
 
-        productsData = data || [];
+        let products = data || [];
+        if (user && products.length > 0) {
+          const { data: likedData } = await supabase
+            .from('user_likes_products')
+            .select('product_id')
+            .eq('user_id', user.id)
+            .in('product_id', products.map((p: any) => p.id));
 
-        // Map to expected format with nested brand object
-        const mappedProducts: RecommendedProduct[] = productsData.map((item: any) => ({
-          ...item,
-          id: item.product_id,
-          is_liked: item.is_liked_by_user,
-          brand: {
-            id: item.brand_id,
-            name: item.brand_name,
-            slug: item.brand_slug,
-          },
-        }));
-
-        if (reset) {
-          setForYouProducts(mappedProducts);
-          setForYouOffset(20);
-        } else {
-          setForYouProducts(prev => [...prev, ...mappedProducts]);
-          setForYouOffset(prev => prev + 20);
+          const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+          products = products.map((p: any) => ({ 
+            ...p, 
+            is_liked: likedIds.has(p.id),
+            brand: p.brand || { id: null, name: 'Unknown', slug: '' },
+          }));
         }
-        
-        setForYouHasMore(mappedProducts.length === 20);
+        setForYouProducts(products as any);
+        setForYouHasMore(false);
       }
-    } catch (err) {
-      console.error('Error fetching recommendations:', err);
-    }
-  };
-
-  const loadMoreForYou = async () => {
-    if (loadingMore || !forYouHasMore) return;
-    setLoadingMore(true);
-    await fetchForYouProducts(false);
-    setLoadingMore(false);
-  };
-
-  const fetchProducts = async (followedBrandIdsSet: Set<string>) => {
-    try {
-      // Most liked - use optimized function
-      const { data, error } = await supabase
-        .rpc('search_most_liked_products', {
-          p_user_id: user!.id,
-          p_search_query: debouncedQuery || null,
-          p_limit: 50
-        });
-
-      if (error) throw error;
-
-      const productsWithBrand = (data || []).map((product: any) => ({
-        ...product,
-        brand: {
-          id: product.brand_id,
-          name: product.brand_name,
-          slug: product.brand_slug,
-          logo_url: product.brand_logo_url,
-        },
-      }));
-
-      setProducts(productsWithBrand);
     } catch (err) {
       console.error('Error fetching products:', err);
     }
+  };
+
+  const loadMoreProducts = async () => {
+    if (loadingMore || !forYouHasMore) return;
+    setLoadingMore(true);
+    await fetchProductsWithFilters(followedBrandIds, false);
+    setLoadingMore(false);
   };
 
   const fetchBrands = async (reset = true) => {
@@ -725,27 +784,18 @@ export default function SearchScreen() {
     }
   };
 
-  const renderProductsList = () => {
-    const isForYou = activeTab === 'for_you';
-    const displayProducts = isForYou ? forYouProducts : products;
-
-    return (
+  const renderProductsList = () => (
     <FlatList
-      ref={isForYou ? forYouListRef : mostLikedListRef}
+      ref={productsListRef}
       key="products-grid"
-      data={displayProducts}
+      data={forYouProducts}
       keyExtractor={(item) => item.id}
       numColumns={2}
       columnWrapperStyle={styles.productRow}
       contentContainerStyle={styles.productListContent}
       showsVerticalScrollIndicator={false}
       onScroll={(e) => {
-        const scrollPos = e.nativeEvent.contentOffset.y;
-        if (activeTab === 'for_you') {
-          forYouScrollRef.current = scrollPos;
-        } else {
-          mostLikedScrollRef.current = scrollPos;
-        }
+        productsScrollRef.current = e.nativeEvent.contentOffset.y;
       }}
       scrollEventThrottle={16}
       refreshControl={
@@ -756,9 +806,7 @@ export default function SearchScreen() {
           <Text style={styles.emptyText}>
             {debouncedQuery
               ? "We couldn't find any products"
-              : activeTab === 'for_you'
-              ? 'Follow some brands to see products here'
-              : 'No products available'}
+              : 'Follow some brands to see products here'}
           </Text>
           {debouncedQuery && (
             <Text style={styles.emptySubtext}>
@@ -767,10 +815,10 @@ export default function SearchScreen() {
           )}
         </View>
       }
-      onEndReached={isForYou ? loadMoreForYou : undefined}
+      onEndReached={filterType === 'for_you' ? loadMoreProducts : undefined}
       onEndReachedThreshold={0.5}
       ListFooterComponent={
-        isForYou && loadingMore ? (
+        loadingMore ? (
           <View style={styles.loadingMore}>
             <ActivityIndicator size="small" color="#000" />
           </View>
@@ -792,7 +840,6 @@ export default function SearchScreen() {
       )}
     />
   );
-  };
 
   const renderBrandsList = () => (
     <FlatList
@@ -928,22 +975,14 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {/* Tabs */}
+      {/* Level 1 Tabs: Products, Brands, Users */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'for_you' && styles.tabActive]}
-          onPress={() => setActiveTab('for_you')}
+          style={[styles.tab, activeTab === 'products' && styles.tabActive]}
+          onPress={() => setActiveTab('products')}
           activeOpacity={0.7}>
-          <Text style={[styles.tabText, activeTab === 'for_you' && styles.tabTextActive]}>
-            For You
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'most_liked' && styles.tabActive]}
-          onPress={() => setActiveTab('most_liked')}
-          activeOpacity={0.7}>
-          <Text style={[styles.tabText, activeTab === 'most_liked' && styles.tabTextActive]}>
-            Most Liked
+          <Text style={[styles.tabText, activeTab === 'products' && styles.tabTextActive]}>
+            Products
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -964,8 +1003,69 @@ export default function SearchScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Sort/Filter options - only show when Products tab is active */}
+      {activeTab === 'products' && (
+        <View style={styles.sortFilterContainer}>
+          {/* Sort Column */}
+          <View style={styles.sortFilterColumn}>
+            <Text style={styles.sortFilterLabel}>Sort:</Text>
+            <TouchableOpacity onPress={() => setSortType('followed_brands')} activeOpacity={0.7}>
+              <Text style={[styles.sortFilterOption, sortType === 'followed_brands' && styles.sortFilterOptionActive]}>
+                Followed Brands
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setSortType('all_brands')} activeOpacity={0.7}>
+              <Text style={[styles.sortFilterOption, sortType === 'all_brands' && styles.sortFilterOptionActive]}>
+                All Brands
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Filter Column */}
+          <View style={styles.sortFilterColumn}>
+            <Text style={styles.sortFilterLabel}>Filter:</Text>
+            <TouchableOpacity onPress={() => setFilterType('for_you')} activeOpacity={0.7}>
+              <Text style={[styles.sortFilterOption, filterType === 'for_you' && styles.sortFilterOptionActive]}>
+                For You
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setFilterType('newest')} activeOpacity={0.7}>
+              <Text style={[styles.sortFilterOption, filterType === 'newest' && styles.sortFilterOptionActive]}>
+                Newest
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.mostLikedRow}>
+              <TouchableOpacity onPress={() => setFilterType('most_liked')} activeOpacity={0.7}>
+                <Text style={[styles.sortFilterOption, filterType === 'most_liked' && styles.sortFilterOptionActive]}>
+                  Most Liked
+                </Text>
+              </TouchableOpacity>
+              {filterType === 'most_liked' && (
+                <View style={styles.timeRangeContainer}>
+                  <TouchableOpacity onPress={() => setTimeRange('7d')} activeOpacity={0.7}>
+                    <Text style={[styles.timeRangeOption, timeRange === '7d' && styles.timeRangeOptionActive]}>
+                      7d
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setTimeRange('30d')} activeOpacity={0.7}>
+                    <Text style={[styles.timeRangeOption, timeRange === '30d' && styles.timeRangeOptionActive]}>
+                      30d
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setTimeRange('90d')} activeOpacity={0.7}>
+                    <Text style={[styles.timeRangeOption, timeRange === '90d' && styles.timeRangeOptionActive]}>
+                      90d
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Content */}
-      {activeTab === 'for_you' || activeTab === 'most_liked'
+      {activeTab === 'products'
         ? renderProductsList()
         : activeTab === 'brands'
         ? renderBrandsList()
@@ -1089,5 +1189,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
+  },
+  sortFilterContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#fff',
+  },
+  sortFilterColumn: {
+    flex: 1,
+  },
+  sortFilterLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  sortFilterOption: {
+    fontSize: 16,
+    color: '#666',
+    paddingVertical: 2,
+  },
+  sortFilterOptionActive: {
+    color: '#000',
+    fontWeight: '700',
+  },
+  mostLikedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  timeRangeContainer: {
+    flexDirection: 'row',
+    marginLeft: 8,
+    alignItems: 'center',
+  },
+  timeRangeOption: {
+    fontSize: 14,
+    color: '#666',
+    marginHorizontal: 4,
+  },
+  timeRangeOptionActive: {
+    color: '#000',
+    fontWeight: '700',
   },
 });

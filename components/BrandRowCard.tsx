@@ -15,6 +15,30 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PRODUCT_IMAGE_WIDTH = (SCREEN_WIDTH - 48) / 2.5; // Show 2.5 products
 const PRODUCT_IMAGE_HEIGHT = PRODUCT_IMAGE_WIDTH * 1.4;
 
+/**
+ * Get recency badge text based on product created_at date
+ */
+function getRecencyBadge(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffHours < 24) return `${Math.max(1, diffHours)}hr`;
+  if (diffDays < 7) return `${diffDays}d`;
+  
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks}w`;
+  
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 4) return `${diffMonths}m`;
+  
+  return null;
+}
+
 interface BrandRowCardProps {
   brandName: string;
   brandSlug: string;
@@ -100,6 +124,12 @@ export function BrandRowCard({
               style={styles.productImage}
               resizeMode="cover"
             />
+            {/* Recency badge */}
+            {product.created_at && getRecencyBadge(product.created_at) && (
+              <View style={styles.recencyBadge}>
+                <Text style={styles.recencyText}>{getRecencyBadge(product.created_at)}</Text>
+              </View>
+            )}
             <TouchableOpacity
               style={styles.productHeartButton}
               onPress={(e) => {
@@ -173,6 +203,19 @@ const styles = StyleSheet.create({
     width: PRODUCT_IMAGE_WIDTH,
     height: PRODUCT_IMAGE_HEIGHT,
     backgroundColor: '#f5f5f5',
+  },
+  recencyBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+  },
+  recencyText: {
+    fontFamily: 'AbrilFatface-Regular',
+    fontSize: 16,
+    color: '#fff',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   productHeartButton: {
     position: 'absolute',
