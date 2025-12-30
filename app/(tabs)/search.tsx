@@ -243,7 +243,10 @@ export default function SearchScreen() {
           productsData = products;
           
           if (!reset) {
-            setForYouProducts(prev => [...prev, ...productsData]);
+            // Filter out duplicates when appending
+            const existingIds = new Set(forYouProducts.map(p => p.id));
+            const newProducts = productsData.filter(p => !existingIds.has(p.id));
+            setForYouProducts(prev => [...prev, ...newProducts]);
             setForYouOffset(currentOffset + PRODUCTS_PER_PAGE);
           } else {
             setForYouProducts(productsData);
@@ -291,7 +294,10 @@ export default function SearchScreen() {
             setForYouProducts(filteredProducts);
             setForYouOffset(20);
           } else {
-            setForYouProducts(prev => [...prev, ...filteredProducts]);
+            // Filter out duplicates when appending
+            const existingIds = new Set(forYouProducts.map(p => p.id));
+            const newProducts = filteredProducts.filter(p => !existingIds.has(p.id));
+            setForYouProducts(prev => [...prev, ...newProducts]);
             setForYouOffset(prev => prev + 20);
           }
           setForYouHasMore(mappedProducts.length === 20);
@@ -341,7 +347,10 @@ export default function SearchScreen() {
         }
 
         if (!reset) {
-          setForYouProducts(prev => [...prev, ...products as any]);
+          // Filter out duplicates when appending
+          const existingIds = new Set(forYouProducts.map(p => p.id));
+          const newProducts = products.filter(p => !existingIds.has(p.id));
+          setForYouProducts(prev => [...prev, ...newProducts as any]);
           setNewestOffset(currentOffset + PRODUCTS_PER_PAGE);
         } else {
           setForYouProducts(products as any);
@@ -408,7 +417,10 @@ export default function SearchScreen() {
         }
 
         if (!reset) {
-          setForYouProducts(prev => [...prev, ...products as any]);
+          // Filter out duplicates when appending
+          const existingIds = new Set(forYouProducts.map(p => p.id));
+          const newProducts = products.filter(p => !existingIds.has(p.id));
+          setForYouProducts(prev => [...prev, ...newProducts as any]);
           setMostLikedOffset(currentOffset + PRODUCTS_PER_PAGE);
         } else {
           setForYouProducts(products as any);
