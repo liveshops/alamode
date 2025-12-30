@@ -70,10 +70,15 @@ export default function SearchScreen() {
   const [forYouOffset, setForYouOffset] = useState(0);
   const [forYouHasMore, setForYouHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [newestOffset, setNewestOffset] = useState(0);
+  const [newestHasMore, setNewestHasMore] = useState(true);
+  const [mostLikedOffset, setMostLikedOffset] = useState(0);
+  const [mostLikedHasMore, setMostLikedHasMore] = useState(true);
   const [brandsOffset, setBrandsOffset] = useState(0);
   const [brandsHasMore, setBrandsHasMore] = useState(true);
   const [loadingMoreBrands, setLoadingMoreBrands] = useState(false);
   const BRANDS_PER_PAGE = 10;
+  const PRODUCTS_PER_PAGE = 50;
 
   // Scroll position refs for each tab
   const productsListRef = useRef<FlatList>(null);
@@ -195,7 +200,12 @@ export default function SearchScreen() {
       if (filterType === 'for_you') {
         // For You - personalized recommendations
         if (debouncedQuery) {
-          // Search with optional brand filter
+          // Search with optional brand filter - with pagination
+          const currentOffset = reset ? 0 : forYouOffset;
+          if (reset) {
+            setForYouOffset(0);
+          }
+
           let query = supabase
             .from('products')
             .select(`
@@ -205,7 +215,7 @@ export default function SearchScreen() {
             .ilike('name', `%${debouncedQuery}%`)
             .eq('is_available', true)
             .order('like_count', { ascending: false })
-            .limit(50);
+            .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
 
           // Apply brand filter if "Followed Brands" is selected
           if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
@@ -231,8 +241,15 @@ export default function SearchScreen() {
             }));
           }
           productsData = products;
-          setForYouProducts(productsData);
-          setForYouHasMore(false);
+          
+          if (!reset) {
+            setForYouProducts(prev => [...prev, ...productsData]);
+            setForYouOffset(currentOffset + PRODUCTS_PER_PAGE);
+          } else {
+            setForYouProducts(productsData);
+            setForYouOffset(PRODUCTS_PER_PAGE);
+          }
+          setForYouHasMore(products.length === PRODUCTS_PER_PAGE);
 
           // Record impressions for search results
           if (user && productsData.length > 0) {
@@ -280,7 +297,12 @@ export default function SearchScreen() {
           setForYouHasMore(mappedProducts.length === 20);
         }
       } else if (filterType === 'newest') {
-        // Newest products
+        // Newest products with pagination
+        const currentOffset = reset ? 0 : newestOffset;
+        if (reset) {
+          setNewestOffset(0);
+        }
+
         let query = supabase
           .from('products')
           .select(`
@@ -289,7 +311,7 @@ export default function SearchScreen() {
           `)
           .eq('is_available', true)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
 
         if (debouncedQuery) {
           query = query.ilike('name', `%${debouncedQuery}%`);
@@ -317,8 +339,15 @@ export default function SearchScreen() {
             brand: p.brand || { id: null, name: 'Unknown', slug: '' },
           }));
         }
-        setForYouProducts(products as any);
-        setForYouHasMore(false);
+
+        if (!reset) {
+          setForYouProducts(prev => [...prev, ...products as any]);
+          setNewestOffset(currentOffset + PRODUCTS_PER_PAGE);
+        } else {
+          setForYouProducts(products as any);
+          setNewestOffset(PRODUCTS_PER_PAGE);
+        }
+        setNewestHasMore(products.length === PRODUCTS_PER_PAGE);
 
         // Record impressions for newest products
         if (user && products.length > 0) {
@@ -331,10 +360,14 @@ export default function SearchScreen() {
           });
         }
       } else if (filterType === 'most_liked') {
-        // Most liked with time range
+        // Most liked with time range and pagination
         const days = getTimeRangeDays();
         const dateThreshold = new Date();
         dateThreshold.setDate(dateThreshold.getDate() - days);
+        const currentOffset = reset ? 0 : mostLikedOffset;
+        if (reset) {
+          setMostLikedOffset(0);
+        }
 
         let query = supabase
           .from('products')
@@ -345,7 +378,7 @@ export default function SearchScreen() {
           .eq('is_available', true)
           .gte('created_at', dateThreshold.toISOString())
           .order('like_count', { ascending: false })
-          .limit(50);
+          .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
 
         if (debouncedQuery) {
           query = query.ilike('name', `%${debouncedQuery}%`);
@@ -373,8 +406,15 @@ export default function SearchScreen() {
             brand: p.brand || { id: null, name: 'Unknown', slug: '' },
           }));
         }
-        setForYouProducts(products as any);
-        setForYouHasMore(false);
+
+        if (!reset) {
+          setForYouProducts(prev => [...prev, ...products as any]);
+          setMostLikedOffset(currentOffset + PRODUCTS_PER_PAGE);
+        } else {
+          setForYouProducts(products as any);
+          setMostLikedOffset(PRODUCTS_PER_PAGE);
+        }
+        setMostLikedHasMore(products.length === PRODUCTS_PER_PAGE);
 
         // Record impressions for most liked products
         if (user && products.length > 0) {
@@ -393,7 +433,14 @@ export default function SearchScreen() {
   };
 
   const loadMoreProducts = async () => {
-    if (loadingMore || !forYouHasMore) return;
+    if (filterType === 'for_you') {
+      if (loadingMore || !forYouHasMore) return;
+    } else if (filterType === 'newest') {
+      if (loadingMore || !newestHasMore) return;
+    } else if (filterType === 'most_liked') {
+      if (loadingMore || !mostLikedHasMore) return;
+    }
+    
     setLoadingMore(true);
     await fetchProductsWithFilters(followedBrandIds, false);
     setLoadingMore(false);
@@ -848,7 +895,7 @@ export default function SearchScreen() {
           )}
         </View>
       }
-      onEndReached={filterType === 'for_you' ? loadMoreProducts : undefined}
+      onEndReached={loadMoreProducts}
       onEndReachedThreshold={0.5}
       ListFooterComponent={
         loadingMore ? (
