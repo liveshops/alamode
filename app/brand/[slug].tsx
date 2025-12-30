@@ -1,3 +1,4 @@
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
@@ -41,6 +42,8 @@ export default function BrandProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const shouldRestoreScroll = useRef(false);
@@ -395,10 +398,28 @@ export default function BrandProfileScreen() {
               product={item}
               onPress={() => handleProductPress(item.id)}
               onLike={() => handleToggleLike(item.id)}
+              onLongPress={() => {
+                setSelectedProduct({ id: item.id, name: item.name });
+                setCollectionSheetVisible(true);
+              }}
             />
           </View>
         )}
       />
+
+      {/* Add to Collection Sheet */}
+      {selectedProduct && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+          onClose={() => {
+            setCollectionSheetVisible(false);
+            setSelectedProduct(null);
+          }}
+          onAdded={() => {}}
+        />
+      )}
     </View>
   );
 }

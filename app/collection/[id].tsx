@@ -1,3 +1,4 @@
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCollectionProducts } from '@/hooks/useCollections';
@@ -34,6 +35,8 @@ export default function CollectionScreen() {
   const { products, loading, error, refetch, toggleLike } = useCollectionProducts(id);
   const [collectionInfo, setCollectionInfo] = useState<CollectionInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
 
   const isOwner = collectionInfo?.user_id === user?.id;
 
@@ -188,10 +191,28 @@ export default function CollectionScreen() {
               onPress={() => handleProductPress(item.product_id)}
               onLike={() => toggleLike(item.product_id)}
               onBrandPress={() => router.push(`/brand/${item.brand_slug}`)}
+              onLongPress={() => {
+                setSelectedProduct({ id: item.product_id, name: item.name });
+                setCollectionSheetVisible(true);
+              }}
             />
           </View>
         )}
       />
+
+      {/* Add to Collection Sheet */}
+      {selectedProduct && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+          onClose={() => {
+            setCollectionSheetVisible(false);
+            setSelectedProduct(null);
+          }}
+          onAdded={() => {}}
+        />
+      )}
     </View>
   );
 }

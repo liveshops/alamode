@@ -1,3 +1,4 @@
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { CollectionRow } from '@/components/CollectionRow';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,6 +44,8 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'liked' | 'collections' | 'brands'>('liked');
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
 
   const { collections } = useCollections(id);
 
@@ -401,12 +404,30 @@ export default function UserProfileScreen() {
                 onPress={() => handleProductPress(item.id)}
                 onLike={() => handleToggleLike(item.id)}
                 onBrandPress={() => handleBrandPress(item.brand.slug)}
+                onLongPress={() => {
+                  setSelectedProduct({ id: item.id, name: item.name });
+                  setCollectionSheetVisible(true);
+                }}
               />
             </View>
           ) : null
         }
         data={activeTab === 'liked' ? likedProducts : []}
       />
+
+      {/* Add to Collection Sheet */}
+      {selectedProduct && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+          onClose={() => {
+            setCollectionSheetVisible(false);
+            setSelectedProduct(null);
+          }}
+          onAdded={() => {}}
+        />
+      )}
     </View>
   );
 }
