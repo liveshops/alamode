@@ -243,10 +243,12 @@ export default function SearchScreen() {
           productsData = products;
           
           if (!reset) {
-            // Filter out duplicates when appending
-            const existingIds = new Set(forYouProducts.map(p => p.id));
-            const newProducts = productsData.filter(p => !existingIds.has(p.id));
-            setForYouProducts(prev => [...prev, ...newProducts]);
+            // Filter out duplicates when appending - use functional setState to avoid race conditions
+            setForYouProducts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newProducts = productsData.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newProducts];
+            });
             setForYouOffset(currentOffset + PRODUCTS_PER_PAGE);
           } else {
             setForYouProducts(productsData);
@@ -294,10 +296,12 @@ export default function SearchScreen() {
             setForYouProducts(filteredProducts);
             setForYouOffset(20);
           } else {
-            // Filter out duplicates when appending
-            const existingIds = new Set(forYouProducts.map(p => p.id));
-            const newProducts = filteredProducts.filter(p => !existingIds.has(p.id));
-            setForYouProducts(prev => [...prev, ...newProducts]);
+            // Filter out duplicates when appending - use functional setState
+            setForYouProducts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newProducts = filteredProducts.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newProducts];
+            });
             setForYouOffset(prev => prev + 20);
           }
           setForYouHasMore(mappedProducts.length === 20);
@@ -347,10 +351,12 @@ export default function SearchScreen() {
         }
 
         if (!reset) {
-          // Filter out duplicates when appending
-          const existingIds = new Set(forYouProducts.map(p => p.id));
-          const newProducts = products.filter(p => !existingIds.has(p.id));
-          setForYouProducts(prev => [...prev, ...newProducts as any]);
+          // Filter out duplicates when appending - use functional setState
+          setForYouProducts(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const newProducts = products.filter(p => !existingIds.has(p.id));
+            return [...prev, ...newProducts as any];
+          });
           setNewestOffset(currentOffset + PRODUCTS_PER_PAGE);
         } else {
           setForYouProducts(products as any);
@@ -417,10 +423,12 @@ export default function SearchScreen() {
         }
 
         if (!reset) {
-          // Filter out duplicates when appending
-          const existingIds = new Set(forYouProducts.map(p => p.id));
-          const newProducts = products.filter(p => !existingIds.has(p.id));
-          setForYouProducts(prev => [...prev, ...newProducts as any]);
+          // Filter out duplicates when appending - use functional setState
+          setForYouProducts(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const newProducts = products.filter(p => !existingIds.has(p.id));
+            return [...prev, ...newProducts as any];
+          });
           setMostLikedOffset(currentOffset + PRODUCTS_PER_PAGE);
         } else {
           setForYouProducts(products as any);
