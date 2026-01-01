@@ -7,15 +7,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -85,7 +85,7 @@ export default function BrandProfileScreen() {
         setIsFollowing(!!followData);
       }
 
-      // Fetch brand's products
+      // Fetch brand's products (remove 1000 product limit)
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select(
@@ -96,7 +96,8 @@ export default function BrandProfileScreen() {
         )
         .eq('brand_id', brandData.id)
         .eq('is_available', true)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50000); // High limit to show all products
 
       if (productsError) throw productsError;
 
