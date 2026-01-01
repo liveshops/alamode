@@ -85,21 +85,47 @@ export default function BrandProfileScreen() {
         setIsFollowing(!!followData);
       }
 
-      // Fetch brand's products (remove 1000 product limit)
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select(
+      // Fetch ALL brand products using pagination (Supabase caps at 1000/query)
+      console.log(`[BRAND] Fetching all products for brand: ${brandData.name} (ID: ${brandData.id})`);
+      
+      let allProducts: any[] = [];
+      let currentOffset = 0;
+      const batchSize = 1000;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data: batchData, error: batchError } = await supabase
+          .from('products')
+          .select(
+            `
+            *,
+            brand:brands(id, name, slug, logo_url)
           `
-          *,
-          brand:brands(id, name, slug, logo_url)
-        `
-        )
-        .eq('brand_id', brandData.id)
-        .eq('is_available', true)
-        .order('created_at', { ascending: false })
-        .limit(50000); // High limit to show all products
+          )
+          .eq('brand_id', brandData.id)
+          .eq('is_available', true)
+          .order('created_at', { ascending: false })
+          .range(currentOffset, currentOffset + batchSize - 1);
 
-      if (productsError) throw productsError;
+        if (batchError) {
+          console.error('[BRAND] Products query error:', batchError);
+          throw batchError;
+        }
+
+        if (batchData && batchData.length > 0) {
+          allProducts = [...allProducts, ...batchData];
+          console.log(`[BRAND] Batch ${Math.floor(currentOffset / batchSize) + 1}: ${batchData.length} products (total: ${allProducts.length})`);
+          
+          // If we got less than batchSize, we're done
+          hasMore = batchData.length === batchSize;
+          currentOffset += batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      console.log(`[BRAND] Final result: ${allProducts.length} total products for ${brandData.name}`);
+      const productsData = allProducts;
 
       // Check which products are liked
       if (user) {
