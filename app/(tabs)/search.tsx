@@ -5,19 +5,20 @@ import { UserCard } from '@/components/UserCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { RecommendedProduct } from '@/hooks/useRecommendations';
+import { buildSearchFilter } from '@/utils/searchUtils';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -209,10 +210,10 @@ export default function SearchScreen() {
           let query = supabase
             .from('products')
             .select(`
-              id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name,
+              id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, description,
               brand:brands(id, name, slug)
             `)
-            .ilike('name', `%${debouncedQuery}%`)
+            .or(buildSearchFilter(debouncedQuery))
             .eq('is_available', true)
             .order('like_count', { ascending: false })
             .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
@@ -316,7 +317,7 @@ export default function SearchScreen() {
         let query = supabase
           .from('products')
           .select(`
-            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, created_at,
+            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, created_at, description,
             brand:brands(id, name, slug)
           `)
           .eq('is_available', true)
@@ -324,7 +325,7 @@ export default function SearchScreen() {
           .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
 
         if (debouncedQuery) {
-          query = query.ilike('name', `%${debouncedQuery}%`);
+          query = query.or(buildSearchFilter(debouncedQuery));
         }
 
         if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
@@ -387,7 +388,7 @@ export default function SearchScreen() {
         let query = supabase
           .from('products')
           .select(`
-            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name,
+            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, description,
             brand:brands(id, name, slug)
           `)
           .eq('is_available', true)
@@ -396,7 +397,7 @@ export default function SearchScreen() {
           .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
 
         if (debouncedQuery) {
-          query = query.ilike('name', `%${debouncedQuery}%`);
+          query = query.or(buildSearchFilter(debouncedQuery));
         }
 
         if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
@@ -602,13 +603,13 @@ export default function SearchScreen() {
     setRefreshing(false);
   };
 
-  const handleProductPress = (productId: string) => {
+  const handleProductPress = useCallback((productId: string) => {
     router.push(`/product/${productId}`);
-  };
+  }, [router]);
 
-  const handleBrandPress = (brandSlug: string) => {
+  const handleBrandPress = useCallback((brandSlug: string) => {
     router.push(`/brand/${brandSlug}`);
-  };
+  }, [router]);
 
   const handleToggleLikeProduct = async (productId: string) => {
     if (!user) return;

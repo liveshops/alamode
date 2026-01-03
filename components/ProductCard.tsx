@@ -2,7 +2,7 @@ import { Product } from '@/hooks/useProducts';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import React, { memo, useState } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /**
@@ -47,8 +47,12 @@ interface ProductCardProps {
 export const ProductCard = memo(function ProductCard({ product, onPress, onLike, onBrandPress, onLongPress }: ProductCardProps) {
   const [imageWidth, setImageWidth] = useState(0);
   
-  // Combine main image with additional images
-  const allImages = [product.image_url, ...(product.additional_images || [])].filter(Boolean);
+  // Memoize expensive calculations
+  const allImages = useMemo(() => 
+    [product.image_url, ...(product.additional_images || [])].filter(Boolean),
+    [product.image_url, product.additional_images]
+  );
+  
   const hasMultipleImages = allImages.length > 1;
   
   const handleLayout = (event: any) => {
@@ -56,23 +60,27 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
     setImageWidth(width);
   };
   
-  // Determine which price is lower (the actual sale/current price)
-  const hasDiscount = product.sale_price != null && product.sale_price !== product.price;
-  
-  // Always show the lower price as current, higher as original (struck through)
-  let currentPrice = product.price;
-  let originalPrice = product.price; // default, will be overwritten if hasDiscount
-  
-  if (hasDiscount && product.sale_price != null) {
-    // Ensure currentPrice is the lower one, originalPrice is the higher one
-    if (product.sale_price < product.price) {
-      currentPrice = product.sale_price;
-      originalPrice = product.price;
-    } else {
-      currentPrice = product.price;
-      originalPrice = product.sale_price;
+  // Memoize price calculations
+  const { currentPrice, originalPrice, hasDiscount } = useMemo(() => {
+    const hasDiscount = product.sale_price != null && product.sale_price !== product.price;
+    let currentPrice = product.price;
+    let originalPrice = product.price;
+    
+    if (hasDiscount && product.sale_price != null) {
+      if (product.sale_price < product.price) {
+        currentPrice = product.sale_price;
+        originalPrice = product.price;
+      } else {
+        currentPrice = product.price;
+        originalPrice = product.sale_price;
+      }
     }
-  }
+    
+    return { currentPrice, originalPrice, hasDiscount };
+  }, [product.price, product.sale_price]);
+  
+  // Memoize recency badge calculation
+  const recencyBadge = useMemo(() => getRecencyBadge(product.created_at), [product.created_at]);
 
   return (
     <View style={styles.container}>
@@ -131,10 +139,10 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
         )}
 
         {/* Recency Badge */}
-        {product.created_at && getRecencyBadge(product.created_at) && (
+        {recencyBadge && (
           <View style={styles.recencyBadge}>
             <Text style={styles.recencyText}>
-              {getRecencyBadge(product.created_at)}
+              {recencyBadge}
             </Text>
           </View>
         )}

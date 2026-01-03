@@ -18,10 +18,6 @@ export default function HomeScreen() {
   const scrollPositionRef = useRef(0);
   const { registerRefresh } = useHomeRefresh();
 
-  const handleLongPress = (product: { id: string; name: string }) => {
-    setSelectedProduct(product);
-    setCollectionSheetVisible(true);
-  };
 
   // Function to scroll to top and refresh
   const scrollToTopAndRefresh = useCallback(() => {
@@ -55,13 +51,36 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const handleProductPress = (productId: string) => {
-    router.push(`/product/${productId}`);
-  };
 
-  const handleBrandPress = (brandSlug: string) => {
+  const handleBrandPress = useCallback((brandSlug: string) => {
     router.push(`/brand/${brandSlug}`);
-  };
+  }, [router]);
+
+  const handleProductPress = useCallback((productId: string) => {
+    router.push(`/product/${productId}`);
+  }, [router]);
+
+  const handleToggleLike = useCallback((productId: string) => {
+    toggleLike(productId);
+  }, [toggleLike]);
+
+  const handleLongPressItem = useCallback((product: { id: string; name: string }) => {
+    setSelectedProduct(product);
+    setCollectionSheetVisible(true);
+  }, []);
+
+  // Memoized render function to prevent unnecessary re-renders
+  const renderProductItem = useCallback(({ item }: { item: any }) => (
+    <View style={styles.cardWrapper}>
+      <ProductCard
+        product={item}
+        onPress={() => handleProductPress(item.id)}
+        onLike={() => handleToggleLike(item.id)}
+        onBrandPress={() => handleBrandPress(item.brand.slug)}
+        onLongPress={() => handleLongPressItem({ id: item.id, name: item.name })}
+      />
+    </View>
+  ), [handleProductPress, handleToggleLike, handleBrandPress, handleLongPressItem]);
 
   if (loading && !refreshing) {
     return (
@@ -126,17 +145,7 @@ export default function HomeScreen() {
             </View>
           ) : null
         }
-        renderItem={({ item }) => (
-          <View style={styles.cardWrapper}>
-            <ProductCard
-              product={item}
-              onPress={() => handleProductPress(item.id)}
-              onLike={() => toggleLike(item.id)}
-              onBrandPress={() => handleBrandPress(item.brand.slug)}
-              onLongPress={() => handleLongPress({ id: item.id, name: item.name })}
-            />
-          </View>
-        )}
+        renderItem={renderProductItem}
       />
 
       {/* Add to Collection Sheet */}
