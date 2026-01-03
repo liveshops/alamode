@@ -899,6 +899,11 @@ export default function SearchScreen() {
         productsScrollRef.current = e.nativeEvent.contentOffset.y;
       }}
       scrollEventThrottle={16}
+      maxToRenderPerBatch={10}
+      windowSize={5}
+      removeClippedSubviews={true}
+      initialNumToRender={10}
+      updateCellsBatchingPeriod={50}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
       }

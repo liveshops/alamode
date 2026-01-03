@@ -111,8 +111,9 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
                   style={[styles.image, { width: imageWidth }]}
                   contentFit="cover"
                   transition={200}
-                  priority="high"
-                  cachePolicy="memory-disk"
+                  priority="normal"
+                  cachePolicy="disk"
+                  recyclingKey={imageUrl}
                 />
               </Pressable>
             ))}
@@ -132,8 +133,9 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
               style={styles.image} 
               contentFit="cover"
               transition={200}
-              priority="high"
-              cachePolicy="memory-disk"
+              priority="normal"
+              cachePolicy="disk"
+              recyclingKey={product.image_url}
             />
           </Pressable>
         )}

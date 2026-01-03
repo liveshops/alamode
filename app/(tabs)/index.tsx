@@ -127,6 +127,11 @@ export default function HomeScreen() {
           }
         }}
         onEndReachedThreshold={0.5}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
+        initialNumToRender={10}
+        updateCellsBatchingPeriod={50}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
         }
