@@ -39,17 +39,13 @@ export function getSearchVariations(term: string): string[] {
     // Standard plural (add 's')
     variations.add(lowerTerm + 's');
     
-    // -es plural for words ending in s, x, z, ch, sh (dress -> dresses)
+    // -es plural for words ending in x, z, ch, sh (box -> boxes)
     if (
-      lowerTerm.endsWith('s') ||
       lowerTerm.endsWith('x') ||
       lowerTerm.endsWith('z') ||
       lowerTerm.endsWith('ch') ||
       lowerTerm.endsWith('sh')
     ) {
-      variations.add(lowerTerm + 'es');
-    } else {
-      // Also try -es for other words (some might need it)
       variations.add(lowerTerm + 'es');
     }
   }
