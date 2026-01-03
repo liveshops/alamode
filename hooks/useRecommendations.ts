@@ -134,15 +134,19 @@ export function useRecommendations(initialLimit = 20) {
       }
 
       if (loadMore) {
-        // Deduplicate: filter out products already in the list
-        // Use ref to get current products without adding to deps
-        const existingIds = new Set(productsRef.current.map(p => p.id));
-        const newProducts = mappedProducts.filter(p => !existingIds.has(p.id));
+        // Deduplicate using functional setState to ensure we use the latest state
+        let newProductsCount = 0;
+        setProducts((prev) => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newProducts = mappedProducts.filter(p => !existingIds.has(p.id));
+          newProductsCount = newProducts.length;
+          
+          console.log(`[loadMore] API returned: ${mappedProducts.length}, New unique: ${newProducts.length}, Current total: ${prev.length}, Offset: ${currentOffset}`);
+          
+          return newProducts.length > 0 ? [...prev, ...newProducts] : prev;
+        });
         
-        console.log(`[loadMore] API returned: ${mappedProducts.length}, New unique: ${newProducts.length}, Current total: ${productsRef.current.length}, Offset: ${currentOffset}`);
-        
-        if (newProducts.length > 0) {
-          setProducts((prev) => [...prev, ...newProducts]);
+        if (newProductsCount > 0) {
           setOffset(currentOffset + mappedProducts.length);
           setHasMore(true);
         } else if (mappedProducts.length > 0) {
@@ -172,15 +176,18 @@ export function useRecommendations(initialLimit = 20) {
               },
             }));
             
-            // Filter duplicates from the cycle results too
-            const cycleNew = cycleMapped.filter(p => !existingIds.has(p.id));
-            console.log(`[cycle] Got ${cycleNew.length} new products with new seed`);
+            // Filter duplicates from the cycle results using functional setState
+            let cycleNewCount = 0;
+            setProducts((prev) => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const cycleNew = cycleMapped.filter(p => !existingIds.has(p.id));
+              cycleNewCount = cycleNew.length;
+              console.log(`[cycle] Got ${cycleNew.length} new products with new seed`);
+              return cycleNew.length > 0 ? [...prev, ...cycleNew] : prev;
+            });
             
-            if (cycleNew.length > 0) {
-              setProducts((prev) => [...prev, ...cycleNew]);
-            }
             setOffset(initialLimit);
-            setHasMore(true);
+            setHasMore(cycleNewCount > 0);
           } else {
             // No more products available at all
             setHasMore(false);
