@@ -11,17 +11,17 @@ import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  ViewToken,
+    ActivityIndicator,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+    ViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -46,6 +46,7 @@ type TabType = 'products' | 'brands' | 'users';
 type SortType = 'followed_brands' | 'all_brands';
 type FilterType = 'for_you' | 'newest' | 'most_liked';
 type TimeRangeType = '7d' | '30d' | '90d';
+type BrandsSortType = 'most_popular' | 'a_z';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -57,6 +58,7 @@ export default function SearchScreen() {
   const [sortType, setSortType] = useState<SortType>('all_brands');
   const [filterType, setFilterType] = useState<FilterType>('for_you');
   const [timeRange, setTimeRange] = useState<TimeRangeType>('30d');
+  const [brandsSortType, setBrandsSortType] = useState<BrandsSortType>('most_popular');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -91,8 +93,9 @@ export default function SearchScreen() {
   const productsScrollRef = useRef(0);
   const brandsScrollRef = useRef(0);
   const usersScrollRef = useRef(0);
-  const shouldRestoreScroll = useRef<TabType | null>(null);
   const prefetchedUrls = useRef<Set<string>>(new Set());
+  const hasInitiallyLoaded = useRef(false);
+  const prevFiltersRef = useRef({ activeTab, sortType, filterType, timeRange, debouncedQuery, brandsSortType });
 
   // Prefetch images for upcoming products
   const prefetchImages = useCallback((startIndex: number, productList: any[]) => {
@@ -125,19 +128,48 @@ export default function SearchScreen() {
     setDebouncedQuery(searchQuery);
   };
 
+  // Restore scroll position when screen comes into focus (without refetching)
   useFocusEffect(
     useCallback(() => {
-      // Mark which tab needs scroll restoration
-      if (activeTab === 'products' && productsScrollRef.current > 0) {
-        shouldRestoreScroll.current = 'products';
-      } else if (activeTab === 'brands' && brandsScrollRef.current > 0) {
-        shouldRestoreScroll.current = 'brands';
-      } else if (activeTab === 'users' && usersScrollRef.current > 0) {
-        shouldRestoreScroll.current = 'users';
-      }
-      fetchData();
-    }, [user, debouncedQuery, activeTab, sortType, filterType, timeRange])
+      // Only restore scroll, don't refetch
+      setTimeout(() => {
+        if (activeTab === 'products' && productsScrollRef.current > 0) {
+          productsListRef.current?.scrollToOffset({
+            offset: productsScrollRef.current,
+            animated: false,
+          });
+        } else if (activeTab === 'brands' && brandsScrollRef.current > 0) {
+          brandsListRef.current?.scrollToOffset({
+            offset: brandsScrollRef.current,
+            animated: false,
+          });
+        } else if (activeTab === 'users' && usersScrollRef.current > 0) {
+          usersListRef.current?.scrollToOffset({
+            offset: usersScrollRef.current,
+            animated: false,
+          });
+        }
+      }, 100);
+    }, [activeTab])
   );
+
+  // Fetch data on initial mount and when filters change
+  useEffect(() => {
+    const filtersChanged = 
+      prevFiltersRef.current.activeTab !== activeTab ||
+      prevFiltersRef.current.sortType !== sortType ||
+      prevFiltersRef.current.filterType !== filterType ||
+      prevFiltersRef.current.timeRange !== timeRange ||
+      prevFiltersRef.current.debouncedQuery !== debouncedQuery ||
+      prevFiltersRef.current.brandsSortType !== brandsSortType;
+    
+    prevFiltersRef.current = { activeTab, sortType, filterType, timeRange, debouncedQuery, brandsSortType };
+
+    if (!hasInitiallyLoaded.current || filtersChanged) {
+      hasInitiallyLoaded.current = true;
+      fetchData();
+    }
+  }, [user, debouncedQuery, activeTab, sortType, filterType, timeRange, brandsSortType]);
 
   const fetchData = async () => {
     if (!user) {
@@ -184,32 +216,6 @@ export default function SearchScreen() {
       console.error('Error fetching search data:', err);
     } finally {
       setLoading(false);
-      // Restore scroll after data loads
-      if (shouldRestoreScroll.current) {
-        setTimeout(() => {
-          switch (shouldRestoreScroll.current) {
-            case 'products':
-              productsListRef.current?.scrollToOffset({
-                offset: productsScrollRef.current,
-                animated: false,
-              });
-              break;
-            case 'brands':
-              brandsListRef.current?.scrollToOffset({
-                offset: brandsScrollRef.current,
-                animated: false,
-              });
-              break;
-            case 'users':
-              usersListRef.current?.scrollToOffset({
-                offset: usersScrollRef.current,
-                animated: false,
-              });
-              break;
-          }
-          shouldRestoreScroll.current = null;
-        }, 300);
-      }
     }
   };
 
@@ -240,7 +246,7 @@ export default function SearchScreen() {
           let query = supabase
             .from('products')
             .select(`
-              id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, description,
+              id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, description,
               brand:brands(id, name, slug)
             `)
             .or(buildSearchFilter(debouncedQuery))
@@ -347,7 +353,7 @@ export default function SearchScreen() {
         let query = supabase
           .from('products')
           .select(`
-            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, created_at, description,
+            id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, created_at, description,
             brand:brands(id, name, slug)
           `)
           .eq('is_available', true)
@@ -418,7 +424,7 @@ export default function SearchScreen() {
         let query = supabase
           .from('products')
           .select(`
-            id, name, price, sale_price, image_url, product_url, like_count, taxonomy_category_name, description,
+            id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, description,
             brand:brands(id, name, slug)
           `)
           .eq('is_available', true)
@@ -505,12 +511,19 @@ export default function SearchScreen() {
 
       // If searching, query brands directly with server-side filter
       if (debouncedQuery) {
-        const { data: searchData, error: searchError } = await supabase
+        let query = supabase
           .from('brands')
           .select('id, name, slug, logo_url, follower_count')
-          .ilike('name', `%${debouncedQuery}%`)
-          .order('follower_count', { ascending: false })
-          .limit(50);
+          .ilike('name', `%${debouncedQuery}%`);
+        
+        // Apply sort order
+        if (brandsSortType === 'a_z') {
+          query = query.order('name', { ascending: true });
+        } else {
+          query = query.order('follower_count', { ascending: false });
+        }
+        
+        const { data: searchData, error: searchError } = await query.limit(50);
 
         if (searchError) throw searchError;
 
@@ -520,13 +533,13 @@ export default function SearchScreen() {
             const { data: productsData } = await supabase
               .from('products')
               .select(`
-                id, name, price, sale_price, currency, image_url, product_url, like_count,
+                id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
                 brand:brands(id, name, slug, logo_url)
               `)
               .eq('brand_id', brand.id)
               .eq('is_available', true)
-              .order('like_count', { ascending: false })
-              .limit(6);
+              .order('created_at', { ascending: false })
+              .limit(10);
 
             // Check which products are liked
             let products = productsData || [];
@@ -549,18 +562,61 @@ export default function SearchScreen() {
         setBrands(brandsData);
         setBrandsHasMore(false); // No pagination for search results
       } else {
-        // No search - use optimized paginated function
-        const { data, error } = await supabase
-          .rpc('get_shop_brands', {
-            p_user_id: user!.id,
-            p_products_per_brand: 6,
-            p_limit: BRANDS_PER_PAGE,
-            p_offset: currentOffset
-          });
+        // No search - use optimized paginated function or direct query for A-Z
+        if (brandsSortType === 'a_z') {
+          // For A-Z sorting, query directly since RPC sorts by follower_count
+          const { data: brandsResult, error: brandsError } = await supabase
+            .from('brands')
+            .select('id, name, slug, logo_url, follower_count')
+            .order('name', { ascending: true })
+            .range(currentOffset, currentOffset + BRANDS_PER_PAGE - 1);
 
-        if (error) throw error;
+          if (brandsError) throw brandsError;
 
-        brandsData = data || [];
+          // Fetch products for each brand
+          const brandsWithProductsData = await Promise.all(
+            (brandsResult || []).map(async (brand: any) => {
+              const { data: productsData } = await supabase
+                .from('products')
+                .select(`
+                  id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
+                  brand:brands(id, name, slug, logo_url)
+                `)
+                .eq('brand_id', brand.id)
+                .eq('is_available', true)
+                .order('created_at', { ascending: false })
+                .limit(10);
+
+              let products = productsData || [];
+              if (user && products.length > 0) {
+                const { data: likedData } = await supabase
+                  .from('user_likes_products')
+                  .select('product_id')
+                  .eq('user_id', user.id)
+                  .in('product_id', products.map(p => p.id));
+
+                const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+                products = products.map(p => ({ ...p, is_liked: likedIds.has(p.id) }));
+              }
+
+              return { ...brand, products };
+            })
+          );
+
+          brandsData = brandsWithProductsData;
+        } else {
+          // Most popular - use optimized RPC
+          const { data, error } = await supabase
+            .rpc('get_shop_brands', {
+              p_user_id: user!.id,
+              p_products_per_brand: 10,
+              p_limit: BRANDS_PER_PAGE,
+              p_offset: currentOffset
+            });
+
+          if (error) throw error;
+          brandsData = data || [];
+        }
 
         // Process brands data
         const brandsWithProducts: BrandWithProducts[] = brandsData.map((brand: any) => ({
@@ -1198,6 +1254,25 @@ export default function SearchScreen() {
                 </View>
               )}
             </View>
+          </View>
+        </View>
+      )}
+
+      {/* Sort options for Brands tab */}
+      {activeTab === 'brands' && (
+        <View style={styles.sortFilterContainer}>
+          <View style={styles.sortFilterColumn}>
+            <Text style={styles.sortFilterLabel}>Sort:</Text>
+            <TouchableOpacity onPress={() => setBrandsSortType('most_popular')} activeOpacity={0.7}>
+              <Text style={[styles.sortFilterOption, brandsSortType === 'most_popular' && styles.sortFilterOptionActive]}>
+                Most Popular
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setBrandsSortType('a_z')} activeOpacity={0.7}>
+              <Text style={[styles.sortFilterOption, brandsSortType === 'a_z' && styles.sortFilterOptionActive]}>
+                A-Z
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}

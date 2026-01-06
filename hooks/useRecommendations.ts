@@ -72,9 +72,113 @@ export function useRecommendations(initialLimit = 20) {
   const [offset, setOffset] = useState(0);
   const [refreshSeed, setRefreshSeed] = useState(0);
   const productsRef = useRef<RecommendedProduct[]>([]);
+  const shownProductIds = useRef<Set<string>>(new Set());
+  const consecutiveDuplicates = useRef(0);
+  const fallbackOffset = useRef(0);
   
   // Keep ref in sync with state for deduplication checks
   productsRef.current = products;
+
+  // Fallback function to fetch discovery products when recommendations are exhausted
+  const fetchDiscoveryProducts = async () => {
+    if (!user) return;
+    
+    try {
+      // Fetch random products ordered by a mix of recency and randomness
+      // Exclude products already shown in this session
+      const shownIds = Array.from(shownProductIds.current);
+      const currentFallbackOffset = fallbackOffset.current;
+      
+      // Use different ordering strategies based on fallback attempts
+      const orderStrategies = ['created_at', 'like_count', 'random'];
+      const strategyIndex = Math.floor(currentFallbackOffset / (initialLimit * 3)) % orderStrategies.length;
+      
+      let query = supabase
+        .from('products')
+        .select(`
+          id, name, price, sale_price, image_url, additional_images, product_url, like_count, 
+          taxonomy_category_name, created_at,
+          brand:brands(id, name, slug)
+        `)
+        .eq('is_available', true);
+      
+      // Exclude already shown products (limit to last 500 to avoid query issues)
+      if (shownIds.length > 0) {
+        const recentShownIds = shownIds.slice(-500);
+        query = query.not('id', 'in', `(${recentShownIds.join(',')})`);
+      }
+      
+      // Apply ordering strategy
+      if (strategyIndex === 0) {
+        query = query.order('created_at', { ascending: false });
+      } else if (strategyIndex === 1) {
+        query = query.order('like_count', { ascending: false });
+      } else {
+        // Random-ish ordering using modulo on offset
+        query = query.order('created_at', { ascending: (currentFallbackOffset % 2 === 0) });
+      }
+      
+      const { data: discoveryData, error: discoveryError } = await query
+        .range(currentFallbackOffset % 1000, (currentFallbackOffset % 1000) + initialLimit - 1);
+      
+      if (discoveryError) {
+        console.error('[discovery] Error:', discoveryError);
+        return;
+      }
+      
+      if (!discoveryData || discoveryData.length === 0) {
+        console.log('[discovery] No products found, resetting fallback offset');
+        fallbackOffset.current = 0;
+        return;
+      }
+      
+      // Check like status for these products
+      const productIds = discoveryData.map((p: any) => p.id);
+      const { data: likedData } = await supabase
+        .from('user_likes_products')
+        .select('product_id')
+        .eq('user_id', user.id)
+        .in('product_id', productIds);
+      
+      const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+      
+      // Map to RecommendedProduct format
+      const mappedDiscovery: RecommendedProduct[] = discoveryData
+        .filter((item: any) => !likedIds.has(item.id)) // Exclude liked products
+        .map((item: any) => ({
+          ...item,
+          product_id: item.id,
+          brand_id: item.brand?.id,
+          brand_name: item.brand?.name,
+          brand_slug: item.brand?.slug,
+          is_liked_by_user: false,
+          is_liked: false,
+          recommendation_score: 0,
+          recommendation_reason: 'Discover something new',
+        }));
+      
+      // Filter out any that were already shown
+      const newDiscovery = mappedDiscovery.filter(p => !shownProductIds.current.has(p.id));
+      
+      if (newDiscovery.length > 0) {
+        console.log(`[discovery] Found ${newDiscovery.length} new products`);
+        newDiscovery.forEach(p => shownProductIds.current.add(p.id));
+        setProducts(prev => [...prev, ...newDiscovery]);
+        
+        // Record impressions (fire and forget)
+        supabase.rpc('record_product_impressions', {
+          p_user_id: user.id,
+          p_product_ids: newDiscovery.map(p => p.id),
+        }).then(({ error }) => {
+          if (error) console.log('Discovery impression tracking skipped:', error.message);
+        });
+      }
+      
+      fallbackOffset.current = currentFallbackOffset + initialLimit;
+    } catch (err) {
+      console.error('[discovery] Error fetching discovery products:', err);
+    }
+  };
 
   const fetchRecommendations = useCallback(async (loadMore = false) => {
     if (!user) {
@@ -138,8 +242,11 @@ export function useRecommendations(initialLimit = 20) {
         let newProductsCount = 0;
         setProducts((prev) => {
           const existingIds = new Set(prev.map(p => p.id));
-          const newProducts = mappedProducts.filter(p => !existingIds.has(p.id));
+          const newProducts = mappedProducts.filter(p => !existingIds.has(p.id) && !shownProductIds.current.has(p.id));
           newProductsCount = newProducts.length;
+          
+          // Track all shown products
+          newProducts.forEach(p => shownProductIds.current.add(p.id));
           
           console.log(`[loadMore] API returned: ${mappedProducts.length}, New unique: ${newProducts.length}, Current total: ${prev.length}, Offset: ${currentOffset}`);
           
@@ -147,60 +254,40 @@ export function useRecommendations(initialLimit = 20) {
         });
         
         if (newProductsCount > 0) {
+          consecutiveDuplicates.current = 0;
           setOffset(currentOffset + mappedProducts.length);
-          setHasMore(true);
         } else if (mappedProducts.length > 0) {
-          // All products were duplicates - cycle completed
-          // Immediately fetch with new seed from offset 0
-          console.log('[loadMore] Cycle complete - fetching with new seed');
-          const newSeed = Math.floor(Math.random() * 1000);
-          setRefreshSeed(newSeed);
+          // All products were duplicates - try different strategies
+          consecutiveDuplicates.current++;
+          console.log(`[loadMore] Consecutive duplicate batches: ${consecutiveDuplicates.current}`);
           
-          // Fetch next batch immediately with new seed from start
-          const { data: cycleData } = await supabase.rpc('get_recommendations', {
-            target_user_id: user.id,
-            result_limit: initialLimit,
-            offset_val: 0,
-            refresh_seed: newSeed,
-          });
-          
-          if (cycleData && cycleData.length > 0) {
-            const cycleMapped: RecommendedProduct[] = cycleData.map((item: any) => ({
-              ...item,
-              id: item.product_id,
-              is_liked: item.is_liked_by_user,
-              brand: {
-                id: item.brand_id,
-                name: item.brand_name,
-                slug: item.brand_slug,
-              },
-            }));
-            
-            // Filter duplicates from the cycle results using functional setState
-            let cycleNewCount = 0;
-            setProducts((prev) => {
-              const existingIds = new Set(prev.map(p => p.id));
-              const cycleNew = cycleMapped.filter(p => !existingIds.has(p.id));
-              cycleNewCount = cycleNew.length;
-              console.log(`[cycle] Got ${cycleNew.length} new products with new seed`);
-              return cycleNew.length > 0 ? [...prev, ...cycleNew] : prev;
-            });
-            
-            setOffset(initialLimit);
-            setHasMore(cycleNewCount > 0);
+          if (consecutiveDuplicates.current < 3) {
+            // Strategy 1: Jump ahead in offset with new seed
+            const newSeed = Math.floor(Math.random() * 10000);
+            const jumpOffset = currentOffset + (initialLimit * consecutiveDuplicates.current * 5);
+            setRefreshSeed(newSeed);
+            setOffset(jumpOffset);
+            console.log(`[loadMore] Jumping to offset ${jumpOffset} with seed ${newSeed}`);
           } else {
-            // No more products available at all
-            setHasMore(false);
+            // Strategy 2: Fallback to discovery products (random products user hasn't seen)
+            console.log('[loadMore] Using discovery fallback');
+            await fetchDiscoveryProducts();
+            consecutiveDuplicates.current = 0;
           }
         } else {
-          console.log('[loadMore] API returned 0 products');
-          setHasMore(false);
+          // API returned 0 products - use discovery fallback
+          console.log('[loadMore] API returned 0 - using discovery fallback');
+          await fetchDiscoveryProducts();
         }
+        // Never set hasMore to false - always have more with 100k products
       } else {
         console.log(`[initial] Loaded ${mappedProducts.length} products`);
+        // Track shown products
+        shownProductIds.current = new Set(mappedProducts.map(p => p.id));
+        consecutiveDuplicates.current = 0;
+        fallbackOffset.current = 0;
         setProducts(mappedProducts);
         setOffset(mappedProducts.length);
-        setHasMore(mappedProducts.length > 0);
       }
     } catch (err) {
       console.error('Error fetching recommendations:', err);

@@ -95,7 +95,8 @@ export default function UserBrandsScreen() {
           .from('products')
           .select('*')
           .eq('brand_id', brand.id)
-          .order('like_count', { ascending: false })
+          .eq('is_available', true)
+          .order('created_at', { ascending: false })
           .limit(10);
 
         // Check which products the current user has liked

@@ -61,7 +61,7 @@ export default function ShopScreen() {
       const { data: brandsData, error: brandsError } = await supabase
         .rpc('get_shop_brands', {
           p_user_id: user?.id || null,
-          p_products_per_brand: 6,
+          p_products_per_brand: 10,
           p_limit: BRANDS_PER_PAGE,
           p_offset: currentOffset
         });

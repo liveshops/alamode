@@ -6,7 +6,7 @@ DROP FUNCTION IF EXISTS get_shop_brands(UUID, INT);
 
 CREATE OR REPLACE FUNCTION get_shop_brands(
   p_user_id UUID,
-  p_products_per_brand INT DEFAULT 6,
+  p_products_per_brand INT DEFAULT 10,
   p_limit INT DEFAULT 10,
   p_offset INT DEFAULT 0
 )
@@ -42,6 +42,7 @@ BEGIN
           'image_url', p.image_url,
           'product_url', p.product_url,
           'like_count', p.like_count,
+          'created_at', p.created_at,
           'is_liked', EXISTS(
             SELECT 1 FROM user_likes_products ulp 
             WHERE ulp.product_id = p.id AND ulp.user_id = p_user_id
@@ -52,12 +53,12 @@ BEGIN
             'slug', b.slug,
             'logo_url', b.logo_url
           )
-        ) ORDER BY p.like_count DESC, p.created_at DESC
+        ) ORDER BY p.created_at DESC
       ), '[]'::jsonb)
       FROM (
         SELECT * FROM products p2
         WHERE p2.brand_id = b.id AND p2.is_available = true
-        ORDER BY p2.like_count DESC, p2.created_at DESC
+        ORDER BY p2.created_at DESC
         LIMIT p_products_per_brand
       ) p
     ) as products

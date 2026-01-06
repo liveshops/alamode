@@ -1,3 +1,4 @@
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { useSimilarProducts } from '@/hooks/useRecommendations';
@@ -10,6 +11,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Linking,
+  Pressable,
   ScrollView,
   Share,
   StyleSheet,
@@ -59,6 +61,7 @@ export default function ProductDetailScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
 
   // Fetch similar products with pagination
   const { products: similarProducts, loading: loadingSimilar, loadingMore: loadingMoreSimilar, hasMore: hasMoreSimilar, loadMore: loadMoreSimilar, toggleLike: toggleSimilarLike } = useSimilarProducts(id || null, 6);
@@ -188,6 +191,12 @@ export default function ProductDetailScreen() {
     }
   };
 
+  const handleLongPress = useCallback(() => {
+    if (product) {
+      setCollectionSheetVisible(true);
+    }
+  }, [product]);
+
   const handleImageScroll = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(offsetX / SCREEN_WIDTH);
@@ -261,15 +270,16 @@ export default function ProductDetailScreen() {
             onScroll={handleImageScroll}
             scrollEventThrottle={16}>
             {allImages.map((imageUrl, index) => (
-              <Image
-                key={index}
-                source={{ uri: imageUrl }}
-                style={styles.productImage}
-                contentFit="cover"
-                transition={200}
-                priority="high"
-                cachePolicy="memory-disk"
-              />
+              <Pressable key={index} onLongPress={handleLongPress} delayLongPress={400}>
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={styles.productImage}
+                  contentFit="cover"
+                  transition={200}
+                  priority="high"
+                  cachePolicy="memory-disk"
+                />
+              </Pressable>
             ))}
           </ScrollView>
 
@@ -411,6 +421,17 @@ export default function ProductDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Add to Collection Sheet */}
+      {product && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={product.id}
+          productName={product.name}
+          onClose={() => setCollectionSheetVisible(false)}
+          onAdded={() => {}}
+        />
+      )}
 
       {/* Bottom Action Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
