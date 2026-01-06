@@ -5,9 +5,11 @@ import { UserCard } from '@/components/UserCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { RecommendedProduct } from '@/hooks/useRecommendations';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { buildSearchFilter } from '@/utils/searchUtils';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -19,6 +21,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -89,6 +92,33 @@ export default function SearchScreen() {
   const brandsScrollRef = useRef(0);
   const usersScrollRef = useRef(0);
   const shouldRestoreScroll = useRef<TabType | null>(null);
+  const prefetchedUrls = useRef<Set<string>>(new Set());
+
+  // Prefetch images for upcoming products
+  const prefetchImages = useCallback((startIndex: number, productList: any[]) => {
+    const PREFETCH_COUNT = 20;
+    const endIndex = Math.min(startIndex + PREFETCH_COUNT, productList.length);
+    
+    for (let i = startIndex; i < endIndex; i++) {
+      const product = productList[i];
+      if (product?.image_url && !prefetchedUrls.current.has(product.image_url)) {
+        prefetchedUrls.current.add(product.image_url);
+        Image.prefetch(getOptimizedImageUrl(product.image_url, 400));
+      }
+    }
+  }, []);
+
+  const onProductsViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length > 0) {
+      const lastVisibleIndex = Math.max(...viewableItems.map(item => item.index ?? 0));
+      prefetchImages(lastVisibleIndex + 4, forYouProducts);
+    }
+  }, [prefetchImages, forYouProducts]);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 10,
+    minimumViewTime: 100,
+  }).current;
 
   // Handle search submit (when user presses return)
   const handleSearchSubmit = () => {
@@ -904,6 +934,8 @@ export default function SearchScreen() {
       removeClippedSubviews={true}
       initialNumToRender={10}
       updateCellsBatchingPeriod={50}
+      onViewableItemsChanged={onProductsViewableItemsChanged}
+      viewabilityConfig={viewabilityConfig}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
       }

@@ -1,14 +1,14 @@
 import { Collection } from '@/hooks/useCollections';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { memo } from 'react';
 import {
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 /**
@@ -86,7 +86,7 @@ export const CollectionRow = memo(function CollectionRow({ collection, onProduct
                 <Image
                   source={{ uri: product.image_url }}
                   style={styles.productImage}
-                  resizeMode="cover"
+                  contentFit="cover"
                 />
                 {/* Likes count badge */}
                 {product.like_count !== undefined && product.like_count > 0 && (

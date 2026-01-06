@@ -1,4 +1,5 @@
 import { Product } from '@/hooks/useProducts';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -55,6 +56,12 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
   
   const hasMultipleImages = allImages.length > 1;
   
+  // Optimize image URLs (400px width for product cards)
+  const optimizedImages = useMemo(() => 
+    allImages.map(url => getOptimizedImageUrl(url, 400)),
+    [allImages]
+  );
+  
   const handleLayout = (event: any) => {
     const { width } = event.nativeEvent.layout;
     setImageWidth(width);
@@ -95,7 +102,7 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
             alwaysBounceHorizontal={true}
             nestedScrollEnabled={true}
             style={styles.imageScrollView}>
-            {allImages.map((imageUrl, index) => (
+            {optimizedImages.map((imageUrl, index) => (
               <Pressable
                 key={index}
                 onPress={onPress}
@@ -112,7 +119,7 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
                   contentFit="cover"
                   transition={200}
                   priority="normal"
-                  cachePolicy="disk"
+                  cachePolicy="memory-disk"
                   recyclingKey={imageUrl}
                 />
               </Pressable>
@@ -129,13 +136,13 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
             }}
             delayLongPress={400}>
             <Image 
-              source={{ uri: product.image_url }} 
+              source={{ uri: optimizedImages[0] || '' }} 
               style={styles.image} 
               contentFit="cover"
               transition={200}
               priority="normal"
-              cachePolicy="disk"
-              recyclingKey={product.image_url}
+              cachePolicy="memory-disk"
+              recyclingKey={optimizedImages[0] || ''}
             />
           </Pressable>
         )}

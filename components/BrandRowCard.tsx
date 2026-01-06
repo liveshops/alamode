@@ -1,14 +1,14 @@
 import { Product } from '@/hooks/useProducts';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import React from 'react';
 import {
-    Dimensions,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -122,7 +122,7 @@ export function BrandRowCard({
             <Image
               source={{ uri: product.image_url }}
               style={styles.productImage}
-              resizeMode="cover"
+              contentFit="cover"
             />
             {/* Recency badge */}
             {product.created_at && getRecencyBadge(product.created_at) && (

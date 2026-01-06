@@ -1,7 +1,8 @@
 import { Product } from '@/hooks/useProducts';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import React from 'react';
-import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /**
  * Get recency badge text based on product created_at date
@@ -54,7 +55,7 @@ export function HorizontalProductCard({
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.9}>
       {/* Product Image */}
       <View style={styles.imageContainer}>
-        <Image source={{ uri: product.image_url }} style={styles.image} resizeMode="cover" />
+        <Image source={{ uri: product.image_url }} style={styles.image} contentFit="cover" />
         {product.created_at && getRecencyBadge(product.created_at) && (
           <View style={styles.recencyBadge}>
             <Text style={styles.recencyText}>{getRecencyBadge(product.created_at)}</Text>

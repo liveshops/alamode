@@ -3,9 +3,11 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHomeRefresh } from '@/contexts/HomeRefreshContext';
 import { useRecommendations } from '@/hooks/useRecommendations';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View, ViewToken } from 'react-native';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -16,6 +18,7 @@ export default function HomeScreen() {
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
+  const prefetchedUrls = useRef<Set<string>>(new Set());
   const { registerRefresh } = useHomeRefresh();
 
 
@@ -68,6 +71,33 @@ export default function HomeScreen() {
     setSelectedProduct(product);
     setCollectionSheetVisible(true);
   }, []);
+
+  // Prefetch images for upcoming products (no Cloudinary, just original URLs)
+  const prefetchImages = useCallback((startIndex: number) => {
+    const PREFETCH_COUNT = 20;
+    const endIndex = Math.min(startIndex + PREFETCH_COUNT, products.length);
+    
+    for (let i = startIndex; i < endIndex; i++) {
+      const product = products[i];
+      if (product?.image_url && !prefetchedUrls.current.has(product.image_url)) {
+        prefetchedUrls.current.add(product.image_url);
+        Image.prefetch(getOptimizedImageUrl(product.image_url, 400));
+      }
+    }
+  }, [products]);
+
+  // Track visible items and prefetch ahead
+  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length > 0) {
+      const lastVisibleIndex = Math.max(...viewableItems.map(item => item.index ?? 0));
+      prefetchImages(lastVisibleIndex + 4);
+    }
+  }, [prefetchImages]);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 10,
+    minimumViewTime: 100,
+  }).current;
 
   // Memoized render function to prevent unnecessary re-renders
   const renderProductItem = useCallback(({ item }: { item: any }) => (
@@ -132,6 +162,8 @@ export default function HomeScreen() {
         removeClippedSubviews={true}
         initialNumToRender={10}
         updateCellsBatchingPeriod={50}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
         }

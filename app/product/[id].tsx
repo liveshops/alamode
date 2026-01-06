@@ -7,15 +7,15 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Dimensions,
-    Linking,
-    ScrollView,
-    Share,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  Linking,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -368,7 +368,7 @@ export default function ProductDetailScreen() {
                       <Image 
                         source={{ uri: item.image_url }} 
                         style={styles.similarImage} 
-                        resizeMode="cover" 
+                        contentFit="cover" 
                       />
                       {item.created_at && getRecencyBadge(item.created_at) && (
                         <View style={styles.similarRecencyBadge}>

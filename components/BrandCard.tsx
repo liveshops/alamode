@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface Brand {
   id: string;
@@ -22,7 +23,7 @@ export function BrandCard({ brand, isFollowing, onPress, onToggleFollow }: Brand
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.9}>
       {/* Brand Logo */}
       {brand.logo_url ? (
-        <Image source={{ uri: brand.logo_url }} style={styles.logo} resizeMode="contain" />
+        <Image source={{ uri: brand.logo_url }} style={styles.logo} contentFit="contain" />
       ) : (
         <View style={styles.logoPlaceholder}>
           <Text style={styles.logoText}>{brand.name[0]}</Text>
