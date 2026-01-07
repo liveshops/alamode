@@ -1,4 +1,5 @@
-import { BrandRowCard } from '@/components/BrandRowCard';
+import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
+import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
@@ -15,22 +16,90 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-interface BrandWithProducts {
-  id: string;
-  name: string;
-  slug: string;
-  logo_url: string | null;
-  follower_count: number;
-  products: Product[];
-}
+const PRODUCTS_PER_PAGE = 20;
+const FETCH_BATCH_SIZE = 100; // Fetch more to enable better interleaving
 
-export default function ShopScreen() {
+// Score and rank products based on user preferences, then interleave by brand
+const scoreAndInterleaveProducts = (
+  products: any[],
+  brandAffinityScores: Map<string, number>
+): any[] => {
+  if (products.length === 0) return [];
+  
+  // Calculate score for each product
+  const now = Date.now();
+  const scoredProducts = products.map(product => {
+    const brandId = product.brand?.id || 'unknown';
+    
+    // Brand affinity score (0-50 points based on how many products user liked from this brand)
+    const brandAffinity = brandAffinityScores.get(brandId) || 0;
+    const affinityScore = Math.min(brandAffinity * 5, 50); // Cap at 50 points
+    
+    // Recency score (0-30 points, newer = higher)
+    const productAge = now - new Date(product.created_at).getTime();
+    const hoursOld = productAge / (1000 * 60 * 60);
+    const recencyScore = Math.max(0, 30 - hoursOld); // Lose ~1 point per hour
+    
+    // Small random factor for variety (0-20 points)
+    const randomScore = Math.random() * 20;
+    
+    const totalScore = affinityScore + recencyScore + randomScore;
+    
+    return { ...product, _score: totalScore };
+  });
+  
+  // Group products by brand
+  const brandGroups: Map<string, any[]> = new Map();
+  for (const product of scoredProducts) {
+    const brandId = product.brand?.id || 'unknown';
+    if (!brandGroups.has(brandId)) {
+      brandGroups.set(brandId, []);
+    }
+    brandGroups.get(brandId)!.push(product);
+  }
+  
+  // Sort products within each brand by score (highest first)
+  for (const [_, brandProducts] of brandGroups) {
+    brandProducts.sort((a, b) => b._score - a._score);
+  }
+  
+  // Sort brands by their top product's score (preferred brands appear first in rotation)
+  const brandArrays = Array.from(brandGroups.entries())
+    .sort((a, b) => {
+      const aTopScore = a[1][0]?._score || 0;
+      const bTopScore = b[1][0]?._score || 0;
+      return bTopScore - aTopScore;
+    })
+    .map(([_, products]) => products);
+  
+  // Round-robin interleave: take one product from each brand in turn
+  // This ensures variety while respecting preference order within brands
+  const interleaved: any[] = [];
+  let hasMore = true;
+  let index = 0;
+  
+  while (hasMore) {
+    hasMore = false;
+    for (const brandProducts of brandArrays) {
+      if (index < brandProducts.length) {
+        // Remove the internal _score before adding to final list
+        const { _score, ...product } = brandProducts[index];
+        interleaved.push(product);
+        hasMore = true;
+      }
+    }
+    index++;
+  }
+  
+  return interleaved;
+};
+
+export default function NewTodayScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const [brands, setBrands] = useState<BrandWithProducts[]>([]);
-  const [followedBrandIds, setFollowedBrandIds] = useState<Set<string>>(new Set());
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -39,16 +108,23 @@ export default function ShopScreen() {
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const shouldRestoreScroll = useRef(false);
-  const BRANDS_PER_PAGE = 10;
+  const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       shouldRestoreScroll.current = scrollPositionRef.current > 0;
-      fetchBrands();
+      fetchProducts();
     }, [user])
   );
 
-  const fetchBrands = async (reset = true) => {
+  const fetchProducts = async (reset = true) => {
+    if (!user) {
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       if (reset) {
         setLoading(true);
@@ -57,62 +133,96 @@ export default function ShopScreen() {
 
       const currentOffset = reset ? 0 : offset;
 
-      // Use optimized database function with pagination
-      const { data: brandsData, error: brandsError } = await supabase
-        .rpc('get_shop_brands', {
-          p_user_id: user?.id || null,
-          p_products_per_brand: 10,
-          p_limit: BRANDS_PER_PAGE,
-          p_offset: currentOffset
-        });
+      // Get the timestamp for 24 hours ago
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-      if (brandsError) throw brandsError;
+      // First, get followed brand IDs
+      const { data: followedBrands, error: followError } = await supabase
+        .from('user_follows_brands')
+        .select('brand_id')
+        .eq('user_id', user.id);
 
-      // Process brands data - products are already included as JSONB
-      const brandsWithProducts = (brandsData || []).map((brand: any) => ({
-        id: brand.id,
-        name: brand.name,
-        slug: brand.slug,
-        logo_url: brand.logo_url,
-        follower_count: brand.follower_count,
-        products: brand.products || [],
-      }));
+      if (followError) throw followError;
+
+      const followedBrandIds = followedBrands?.map(f => f.brand_id) || [];
+
+      if (followedBrandIds.length === 0) {
+        setProducts([]);
+        setLoading(false);
+        setHasMore(false);
+        return;
+      }
+
+      // Fetch user's brand affinity (how many products they've liked from each brand)
+      const { data: likedProductsBrands } = await supabase
+        .from('user_likes_products')
+        .select('products(brand_id)')
+        .eq('user_id', user.id);
+
+      // Build brand affinity map (brand_id -> count of liked products)
+      const brandAffinityScores = new Map<string, number>();
+      for (const item of likedProductsBrands || []) {
+        const brandId = (item.products as any)?.brand_id;
+        if (brandId) {
+          brandAffinityScores.set(brandId, (brandAffinityScores.get(brandId) || 0) + 1);
+        }
+      }
+
+      // Fetch products from followed brands added in the last 24 hours
+      // Fetch a larger batch to enable better interleaving across brands
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select(`
+          id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
+          brand:brands(id, name, slug, logo_url)
+        `)
+        .in('brand_id', followedBrandIds)
+        .eq('is_available', true)
+        .gte('created_at', twentyFourHoursAgo.toISOString())
+        .order('created_at', { ascending: false })
+        .range(currentOffset, currentOffset + FETCH_BATCH_SIZE - 1);
+
+      if (productsError) throw productsError;
+
+      // Check which products the user has liked
+      let productsWithLikes = productsData || [];
+      if (productsWithLikes.length > 0) {
+        const productIds = productsWithLikes.map(p => p.id);
+        const { data: likedData } = await supabase
+          .from('user_likes_products')
+          .select('product_id')
+          .eq('user_id', user.id)
+          .in('product_id', productIds);
+
+        const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+        productsWithLikes = productsWithLikes.map(p => ({
+          ...p,
+          is_liked: likedIds.has(p.id),
+        }));
+      }
+
+      // Score and interleave products by brand for variety + preference ranking
+      const interleavedProducts = scoreAndInterleaveProducts(productsWithLikes, brandAffinityScores);
 
       if (reset) {
-        setBrands(brandsWithProducts);
-        setOffset(BRANDS_PER_PAGE);
+        setProducts(interleavedProducts as any);
+        setOffset(FETCH_BATCH_SIZE);
       } else {
-        // Filter out duplicates before appending
-        setBrands(prev => {
-          const existingIds = new Set(prev.map(b => b.id));
-          const newBrands = brandsWithProducts.filter((b: BrandWithProducts) => !existingIds.has(b.id));
-          return [...prev, ...newBrands];
+        setProducts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newProducts = interleavedProducts.filter((p: any) => !existingIds.has(p.id));
+          return [...prev, ...newProducts] as any;
         });
-        setOffset(prev => prev + BRANDS_PER_PAGE);
+        setOffset(prev => prev + FETCH_BATCH_SIZE);
       }
 
-      setHasMore(brandsWithProducts.length === BRANDS_PER_PAGE);
-
-      // Set followed brands from the is_following field returned by the function
-      if (user && brandsData) {
-        const newFollowedIds = brandsData
-          .filter((bd: any) => bd.is_following)
-          .map((bd: any) => bd.id as string);
-        
-        if (reset) {
-          setFollowedBrandIds(new Set(newFollowedIds));
-        } else {
-          setFollowedBrandIds(prev => new Set([...prev, ...newFollowedIds]));
-        }
-      } else if (reset) {
-        setFollowedBrandIds(new Set());
-      }
+      setHasMore(productsWithLikes.length === FETCH_BATCH_SIZE);
     } catch (err) {
-      console.error('Error fetching brands:', err);
+      console.error('Error fetching new today products:', err);
     } finally {
       setLoading(false);
       setLoadingMore(false);
-      // Restore scroll after data loads
       if (shouldRestoreScroll.current) {
         setTimeout(() => {
           flatListRef.current?.scrollToOffset({
@@ -128,131 +238,41 @@ export default function ShopScreen() {
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
-    await fetchBrands(false);
+    await fetchProducts(false);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchBrands();
+    await fetchProducts();
     setRefreshing(false);
-  };
-
-  const handleToggleFollow = async (brandId: string) => {
-    if (!user) return;
-
-    const wasFollowing = followedBrandIds.has(brandId);
-
-    // Optimistic update
-    setFollowedBrandIds((prev) => {
-      const newSet = new Set(prev);
-      if (wasFollowing) {
-        newSet.delete(brandId);
-      } else {
-        newSet.add(brandId);
-      }
-      return newSet;
-    });
-
-    // Update follower count optimistically
-    setBrands((prev) =>
-      prev.map((b) =>
-        b.id === brandId
-          ? {
-              ...b,
-              follower_count: wasFollowing ? b.follower_count - 1 : b.follower_count + 1,
-            }
-          : b
-      )
-    );
-
-    try {
-      if (wasFollowing) {
-        await supabase
-          .from('user_follows_brands')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('brand_id', brandId);
-      } else {
-        const { error } = await supabase
-          .from('user_follows_brands')
-          .upsert(
-            { user_id: user.id, brand_id: brandId },
-            { onConflict: 'user_id,brand_id', ignoreDuplicates: true }
-          );
-
-        if (error) throw error;
-      }
-    } catch (err) {
-      console.error('Error toggling follow:', err);
-      // Revert on error
-      setFollowedBrandIds((prev) => {
-        const newSet = new Set(prev);
-        if (wasFollowing) {
-          newSet.add(brandId);
-        } else {
-          newSet.delete(brandId);
-        }
-        return newSet;
-      });
-
-      setBrands((prev) =>
-        prev.map((b) =>
-          b.id === brandId
-            ? {
-                ...b,
-                follower_count: wasFollowing ? b.follower_count + 1 : b.follower_count - 1,
-              }
-            : b
-        )
-      );
-    }
-  };
-
-  const handleBrandPress = (brandSlug: string) => {
-    router.push(`/brand/${brandSlug}`);
   };
 
   const handleProductPress = (productId: string) => {
     router.push(`/product/${productId}`);
   };
 
+  const handleBrandPress = (brandSlug: string) => {
+    router.push(`/brand/${brandSlug}`);
+  };
+
   const handleToggleLike = async (productId: string) => {
     if (!user) return;
 
-    // Find the product in brands
-    let product: Product | undefined;
-    let brandId: string | undefined;
-    
-    for (const brand of brands) {
-      const foundProduct = brand.products.find((p) => p.id === productId);
-      if (foundProduct) {
-        product = foundProduct;
-        brandId = brand.id;
-        break;
-      }
-    }
-
-    if (!product || !brandId) return;
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
 
     const wasLiked = product.is_liked;
 
     // Optimistic update
-    setBrands((prev) =>
-      prev.map((b) =>
-        b.id === brandId
+    setProducts(prev =>
+      prev.map(p =>
+        p.id === productId
           ? {
-              ...b,
-              products: b.products.map((p) =>
-                p.id === productId
-                  ? {
-                      ...p,
-                      is_liked: !wasLiked,
-                      like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
-                    }
-                  : p
-              ),
+              ...p,
+              is_liked: !wasLiked,
+              like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
             }
-          : b
+          : p
       )
     );
 
@@ -264,38 +284,34 @@ export default function ShopScreen() {
           .eq('user_id', user.id)
           .eq('product_id', productId);
       } else {
-        const { error } = await supabase
+        await supabase
           .from('user_likes_products')
           .upsert(
             { user_id: user.id, product_id: productId },
             { onConflict: 'user_id,product_id', ignoreDuplicates: true }
           );
-
-        if (error) throw error;
       }
     } catch (err) {
       console.error('Error toggling like:', err);
       // Revert on error
-      setBrands((prev) =>
-        prev.map((b) =>
-          b.id === brandId
+      setProducts(prev =>
+        prev.map(p =>
+          p.id === productId
             ? {
-                ...b,
-                products: b.products.map((p) =>
-                  p.id === productId
-                    ? {
-                        ...p,
-                        is_liked: wasLiked,
-                        like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
-                      }
-                    : p
-                ),
+                ...p,
+                is_liked: wasLiked,
+                like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
               }
-            : b
+            : p
         )
       );
     }
   };
+
+  const handleLongPressItem = useCallback((product: { id: string; name: string }) => {
+    setSelectedProduct(product);
+    setCollectionSheetVisible(true);
+  }, []);
 
   if (loading && !refreshing) {
     return (
@@ -304,6 +320,18 @@ export default function ShopScreen() {
       </View>
     );
   }
+
+  const renderProductItem = ({ item }: { item: Product }) => (
+    <View style={styles.cardWrapper}>
+      <ProductCard
+        product={item}
+        onPress={() => handleProductPress(item.id)}
+        onLike={() => handleToggleLike(item.id)}
+        onBrandPress={() => handleBrandPress(item.brand?.slug || '')}
+        onLongPress={() => handleLongPressItem({ id: item.id, name: item.name })}
+      />
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -314,12 +342,14 @@ export default function ShopScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Brands List */}
+      {/* Products Grid */}
       <FlatList
         ref={flatListRef}
-        data={brands}
+        data={products}
         keyExtractor={(item) => item.id}
+        numColumns={2}
         contentContainerStyle={styles.listContent}
+        columnWrapperStyle={styles.columnWrapper}
         showsVerticalScrollIndicator={false}
         onScroll={(e) => {
           scrollPositionRef.current = e.nativeEvent.contentOffset.y;
@@ -339,23 +369,25 @@ export default function ShopScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No brands available</Text>
+            <Text style={styles.emptyText}>No new products today</Text>
+            <Text style={styles.emptySubtext}>
+              Products from brands you follow added in the last 24 hours will appear here
+            </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <BrandRowCard
-            brandName={item.name}
-            brandSlug={item.slug}
-            isFollowing={followedBrandIds.has(item.id)}
-            followerCount={item.follower_count}
-            products={item.products}
-            onBrandPress={() => handleBrandPress(item.slug)}
-            onToggleFollow={() => handleToggleFollow(item.id)}
-            onProductPress={handleProductPress}
-            onToggleLike={handleToggleLike}
-          />
-        )}
+        renderItem={renderProductItem}
       />
+
+      {/* Add to Collection Sheet */}
+      {selectedProduct && (
+        <AddToCollectionSheet
+          visible={collectionSheetVisible}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+          onClose={() => setCollectionSheetVisible(false)}
+          onAdded={() => {}}
+        />
+      )}
     </View>
   );
 }
@@ -385,15 +417,31 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   listContent: {
-    paddingTop: 16,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  columnWrapper: {
+    justifyContent: 'space-between',
+  },
+  cardWrapper: {
+    width: '50%',
+    paddingHorizontal: 4,
+    marginBottom: 16,
   },
   emptyContainer: {
     paddingVertical: 48,
+    paddingHorizontal: 32,
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
     color: '#666',
+    textAlign: 'center',
   },
   footerLoader: {
     paddingVertical: 20,

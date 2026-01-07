@@ -3,7 +3,6 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHomeRefresh } from '@/contexts/HomeRefreshContext';
 import { useRecommendations } from '@/hooks/useRecommendations';
-import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -72,16 +71,21 @@ export default function HomeScreen() {
     setCollectionSheetVisible(true);
   }, []);
 
-  // Prefetch images for upcoming products (no Cloudinary, just original URLs)
+  // Prefetch images for upcoming products - reduced count to minimize memory pressure
   const prefetchImages = useCallback((startIndex: number) => {
-    const PREFETCH_COUNT = 20;
+    const PREFETCH_COUNT = 6; // Reduced from 20 to minimize memory usage
     const endIndex = Math.min(startIndex + PREFETCH_COUNT, products.length);
+    
+    // Clear old prefetch tracking if it grows too large to prevent memory leaks
+    if (prefetchedUrls.current.size > 100) {
+      prefetchedUrls.current.clear();
+    }
     
     for (let i = startIndex; i < endIndex; i++) {
       const product = products[i];
       if (product?.image_url && !prefetchedUrls.current.has(product.image_url)) {
         prefetchedUrls.current.add(product.image_url);
-        Image.prefetch(getOptimizedImageUrl(product.image_url, 400));
+        Image.prefetch(product.image_url);
       }
     }
   }, [products]);

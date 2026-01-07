@@ -277,7 +277,7 @@ export default function ProductDetailScreen() {
                   contentFit="cover"
                   transition={200}
                   priority="high"
-                  cachePolicy="memory-disk"
+                  cachePolicy="disk"
                 />
               </Pressable>
             ))}

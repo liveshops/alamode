@@ -5,7 +5,6 @@ import { UserCard } from '@/components/UserCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { RecommendedProduct } from '@/hooks/useRecommendations';
-import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { buildSearchFilter } from '@/utils/searchUtils';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,7 +57,7 @@ export default function SearchScreen() {
   const [sortType, setSortType] = useState<SortType>('all_brands');
   const [filterType, setFilterType] = useState<FilterType>('for_you');
   const [timeRange, setTimeRange] = useState<TimeRangeType>('30d');
-  const [brandsSortType, setBrandsSortType] = useState<BrandsSortType>('most_popular');
+  const [brandsSortType, setBrandsSortType] = useState<BrandsSortType>('a_z');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -97,16 +96,21 @@ export default function SearchScreen() {
   const hasInitiallyLoaded = useRef(false);
   const prevFiltersRef = useRef({ activeTab, sortType, filterType, timeRange, debouncedQuery, brandsSortType });
 
-  // Prefetch images for upcoming products
+  // Prefetch images for upcoming products - reduced count to minimize memory pressure
   const prefetchImages = useCallback((startIndex: number, productList: any[]) => {
-    const PREFETCH_COUNT = 20;
+    const PREFETCH_COUNT = 6; // Reduced from 20 to minimize memory usage
     const endIndex = Math.min(startIndex + PREFETCH_COUNT, productList.length);
+    
+    // Clear old prefetch tracking if it grows too large to prevent memory leaks
+    if (prefetchedUrls.current.size > 100) {
+      prefetchedUrls.current.clear();
+    }
     
     for (let i = startIndex; i < endIndex; i++) {
       const product = productList[i];
       if (product?.image_url && !prefetchedUrls.current.has(product.image_url)) {
         prefetchedUrls.current.add(product.image_url);
-        Image.prefetch(getOptimizedImageUrl(product.image_url, 400));
+        Image.prefetch(product.image_url);
       }
     }
   }, []);
@@ -558,22 +562,25 @@ export default function SearchScreen() {
           })
         );
 
-        brandsData = brandsWithProducts;
+        // Filter out brands with no available products
+        brandsData = brandsWithProducts.filter(b => b.products && b.products.length > 0);
         setBrands(brandsData);
         setBrandsHasMore(false); // No pagination for search results
       } else {
         // No search - use optimized paginated function or direct query for A-Z
         if (brandsSortType === 'a_z') {
-          // For A-Z sorting, query directly since RPC sorts by follower_count
+          // For A-Z sorting, query brands that have at least one available product
+          // Use a subquery approach to filter at the database level
           const { data: brandsResult, error: brandsError } = await supabase
             .from('brands')
-            .select('id, name, slug, logo_url, follower_count')
+            .select('id, name, slug, logo_url, follower_count, products!inner(id)')
+            .eq('products.is_available', true)
             .order('name', { ascending: true })
             .range(currentOffset, currentOffset + BRANDS_PER_PAGE - 1);
 
           if (brandsError) throw brandsError;
 
-          // Fetch products for each brand
+          // Fetch products for each brand (we already know they have products)
           const brandsWithProductsData = await Promise.all(
             (brandsResult || []).map(async (brand: any) => {
               const { data: productsData } = await supabase
@@ -599,7 +606,8 @@ export default function SearchScreen() {
                 products = products.map(p => ({ ...p, is_liked: likedIds.has(p.id) }));
               }
 
-              return { ...brand, products };
+              // Return without the nested products from the join
+              return { id: brand.id, name: brand.name, slug: brand.slug, logo_url: brand.logo_url, follower_count: brand.follower_count, products };
             })
           );
 

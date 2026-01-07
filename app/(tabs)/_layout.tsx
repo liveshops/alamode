@@ -47,9 +47,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="shop"
         options={{
-          title: 'Shop',
+          title: 'New Today',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="storefront" size={size} color={color} />
+            <Ionicons name="today" size={size} color={color} />
           ),
         }}
       />

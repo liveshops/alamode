@@ -126,7 +126,8 @@ export default function UserBrandsScreen() {
         });
       }
 
-      setBrands(brandsWithProducts);
+      // Filter out brands with no available products
+      setBrands(brandsWithProducts.filter(b => b.products && b.products.length > 0));
 
       // Fetch current user's followed brands
       if (user) {

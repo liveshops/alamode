@@ -63,6 +63,10 @@ BEGIN
       ) p
     ) as products
   FROM brands b
+  WHERE EXISTS (
+    SELECT 1 FROM products p3 
+    WHERE p3.brand_id = b.id AND p3.is_available = true
+  )
   ORDER BY b.follower_count DESC
   LIMIT p_limit
   OFFSET p_offset;

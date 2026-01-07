@@ -1,4 +1,4 @@
-import { BrandCard } from '@/components/BrandCard';
+import { BrandRowCard } from '@/components/BrandRowCard';
 import { HorizontalProductCard } from '@/components/HorizontalProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
@@ -24,6 +24,10 @@ interface Brand {
   follower_count: number;
 }
 
+interface BrandWithProducts extends Brand {
+  products: Product[];
+}
+
 type TabType = 'products' | 'brands';
 
 export default function FavoritesScreen() {
@@ -33,7 +37,7 @@ export default function FavoritesScreen() {
 
   const [activeTab, setActiveTab] = useState<TabType>('products');
   const [products, setProducts] = useState<Product[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
+  const [brands, setBrands] = useState<BrandWithProducts[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const productsListRef = useRef<FlatList>(null);
@@ -88,7 +92,7 @@ export default function FavoritesScreen() {
 
       setProducts(productsWithLiked);
 
-      // Fetch followed brands
+      // Fetch followed brands with their products
       const { data: followedBrandsData, error: brandsError } = await supabase
         .from('user_follows_brands')
         .select(
@@ -102,11 +106,45 @@ export default function FavoritesScreen() {
 
       if (brandsError) throw brandsError;
 
-      const followedBrands = (followedBrandsData || [])
-        .map((item: any) => item.brands)
-        .filter(Boolean);
+      // Fetch products for each followed brand
+      const brandsWithProducts: BrandWithProducts[] = [];
+      for (const item of followedBrandsData || []) {
+        const brand = item.brands;
+        if (!brand) continue;
 
-      setBrands(followedBrands);
+        const { data: productsData } = await supabase
+          .from('products')
+          .select(`
+            id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
+            brand:brands(id, name, slug, logo_url)
+          `)
+          .eq('brand_id', brand.id)
+          .eq('is_available', true)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        let products = productsData || [];
+        if (products.length > 0) {
+          const { data: likedData } = await supabase
+            .from('user_likes_products')
+            .select('product_id')
+            .eq('user_id', user.id)
+            .in('product_id', products.map(p => p.id));
+
+          const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+          products = products.map(p => ({ ...p, is_liked: likedIds.has(p.id) }));
+        }
+
+        // Only include brands that have products
+        if (products.length > 0) {
+          brandsWithProducts.push({
+            ...brand,
+            products,
+          });
+        }
+      }
+
+      setBrands(brandsWithProducts);
     } catch (err) {
       console.error('Error fetching favorites:', err);
     } finally {
@@ -189,6 +227,86 @@ export default function FavoritesScreen() {
     router.push(`/brand/${brandSlug}`);
   };
 
+  // Handle toggling like for products in the brands list
+  const handleToggleLikeInBrand = async (productId: string) => {
+    if (!user) return;
+
+    // Find the product in brands
+    let product: Product | undefined;
+    let brandId: string | undefined;
+    
+    for (const brand of brands) {
+      const foundProduct = brand.products.find((p) => p.id === productId);
+      if (foundProduct) {
+        product = foundProduct as Product;
+        brandId = brand.id;
+        break;
+      }
+    }
+
+    if (!product || !brandId) return;
+
+    const wasLiked = product.is_liked;
+
+    // Optimistic update
+    setBrands((prev) =>
+      prev.map((b) =>
+        b.id === brandId
+          ? {
+              ...b,
+              products: b.products.map((p) =>
+                p.id === productId
+                  ? {
+                      ...p,
+                      is_liked: !wasLiked,
+                      like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
+                    }
+                  : p
+              ),
+            }
+          : b
+      )
+    );
+
+    try {
+      if (wasLiked) {
+        await supabase
+          .from('user_likes_products')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('product_id', productId);
+      } else {
+        await supabase
+          .from('user_likes_products')
+          .upsert(
+            { user_id: user.id, product_id: productId },
+            { onConflict: 'user_id,product_id', ignoreDuplicates: true }
+          );
+      }
+    } catch (err) {
+      console.error('Error toggling like:', err);
+      // Revert on error
+      setBrands((prev) =>
+        prev.map((b) =>
+          b.id === brandId
+            ? {
+                ...b,
+                products: b.products.map((p) =>
+                  p.id === productId
+                    ? {
+                        ...p,
+                        is_liked: wasLiked,
+                        like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
+                      }
+                    : p
+                ),
+              }
+            : b
+        )
+      );
+    }
+  };
+
   if (loading && !refreshing) {
     return (
       <View style={[styles.centerContainer, { paddingTop: insets.top }]}>
@@ -253,11 +371,16 @@ export default function FavoritesScreen() {
         </View>
       }
       renderItem={({ item }) => (
-        <BrandCard
-          brand={item}
+        <BrandRowCard
+          brandName={item.name}
+          brandSlug={item.slug}
           isFollowing={true}
-          onPress={() => handleBrandPress(item.slug)}
+          followerCount={item.follower_count}
+          products={item.products as any}
+          onBrandPress={() => handleBrandPress(item.slug)}
           onToggleFollow={() => handleToggleFollowBrand(item.id)}
+          onProductPress={handleProductPress}
+          onToggleLike={handleToggleLikeInBrand}
         />
       )}
     />
