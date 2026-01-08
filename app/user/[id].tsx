@@ -1,5 +1,6 @@
 import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { CollectionRow } from '@/components/CollectionRow';
+import { LinkableText } from '@/components/LinkableText';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCollections } from '@/hooks/useCollections';
@@ -311,7 +312,7 @@ export default function UserProfileScreen() {
             <Text style={styles.username}>@{userProfile.username}</Text>
 
             {/* Bio */}
-            {userProfile.bio && <Text style={styles.bio}>{userProfile.bio}</Text>}
+            {userProfile.bio && <LinkableText text={userProfile.bio} style={styles.bio} />}
 
             {/* Stats Row */}
             <View style={styles.statsRow}>

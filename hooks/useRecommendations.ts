@@ -76,8 +76,52 @@ export function useRecommendations(initialLimit = 20) {
   const consecutiveDuplicates = useRef(0);
   const fallbackOffset = useRef(0);
   
+  // Not interested tracking
+  const notInterestedProductIds = useRef<Set<string>>(new Set());
+  const notInterestedBrandCounts = useRef<Map<string, number>>(new Map());
+  const notInterestedCategoryCounts = useRef<Map<string, number>>(new Map());
+  
   // Keep ref in sync with state for deduplication checks
   productsRef.current = products;
+
+  // Load not interested preferences on mount
+  useEffect(() => {
+    if (!user) return;
+    
+    const loadNotInterestedPreferences = async () => {
+      try {
+        // Load not interested product IDs
+        const { data: notInterestedData } = await supabase
+          .from('user_not_interested')
+          .select('product_id, brand_id, category_id')
+          .eq('user_id', user.id);
+        
+        if (notInterestedData) {
+          notInterestedProductIds.current = new Set(notInterestedData.map(d => d.product_id));
+          
+          // Count by brand
+          const brandCounts = new Map<string, number>();
+          const categoryCounts = new Map<string, number>();
+          
+          for (const item of notInterestedData) {
+            if (item.brand_id) {
+              brandCounts.set(item.brand_id, (brandCounts.get(item.brand_id) || 0) + 1);
+            }
+            if (item.category_id) {
+              categoryCounts.set(item.category_id, (categoryCounts.get(item.category_id) || 0) + 1);
+            }
+          }
+          
+          notInterestedBrandCounts.current = brandCounts;
+          notInterestedCategoryCounts.current = categoryCounts;
+        }
+      } catch (err) {
+        console.error('Error loading not interested preferences:', err);
+      }
+    };
+    
+    loadNotInterestedPreferences();
+  }, [user]);
 
   // Fallback function to fetch discovery products when recommendations are exhausted
   const fetchDiscoveryProducts = async () => {
@@ -369,6 +413,88 @@ export function useRecommendations(initialLimit = 20) {
     }
   };
 
+  // Mark a product as not interested and remove from feed
+  const markNotInterested = async (productId: string) => {
+    if (!user) return false;
+    
+    const product = products.find(p => p.id === productId);
+    if (!product) return false;
+    
+    // Optimistically remove from feed
+    setProducts(prev => prev.filter(p => p.id !== productId));
+    
+    // Add to local tracking
+    notInterestedProductIds.current.add(productId);
+    shownProductIds.current.add(productId);
+    
+    // Update brand/category counts locally
+    if (product.brand_id) {
+      const currentBrandCount = notInterestedBrandCounts.current.get(product.brand_id) || 0;
+      notInterestedBrandCounts.current.set(product.brand_id, currentBrandCount + 1);
+    }
+    if (product.taxonomy_category_name) {
+      // We need category_id, but we might only have the name
+      // The server-side function will capture the correct category_id
+    }
+    
+    try {
+      // Call server to persist
+      const { data, error } = await supabase.rpc('mark_not_interested', {
+        p_user_id: user.id,
+        p_product_id: productId,
+      });
+      
+      if (error) throw error;
+      
+      console.log('[not-interested] Marked product as not interested:', productId);
+      return true;
+    } catch (err) {
+      console.error('Error marking not interested:', err);
+      // Revert optimistic update on error
+      setProducts(prev => {
+        // Re-add at original position or end
+        const exists = prev.find(p => p.id === productId);
+        if (!exists && product) {
+          return [...prev, product];
+        }
+        return prev;
+      });
+      return false;
+    }
+  };
+
+  // Apply deprioritization scoring to products based on not interested preferences
+  const applyNotInterestedScoring = (productList: RecommendedProduct[]): RecommendedProduct[] => {
+    return productList
+      .filter(p => !notInterestedProductIds.current.has(p.id)) // Exclude exact matches
+      .map(p => {
+        let penalty = 0;
+        
+        // Deprioritize by brand (more not interested = bigger penalty)
+        const brandCount = notInterestedBrandCounts.current.get(p.brand_id) || 0;
+        if (brandCount > 0) {
+          // Each not-interested item from this brand adds 5% penalty, max 50%
+          penalty += Math.min(brandCount * 0.05, 0.5);
+        }
+        
+        // Deprioritize by category - need to match by name since we have category name
+        // This is a simplified version; ideally we'd match by ID
+        for (const [categoryId, count] of notInterestedCategoryCounts.current) {
+          if (count > 0) {
+            // Each not-interested item from this category adds 3% penalty, max 30%
+            penalty += Math.min(count * 0.03, 0.3);
+          }
+        }
+        
+        // Apply penalty to recommendation score (used for sorting)
+        return {
+          ...p,
+          recommendation_score: p.recommendation_score * (1 - penalty),
+        };
+      })
+      .sort((a, b) => b.recommendation_score - a.recommendation_score);
+  };
+
   return {
     products,
     loading,
@@ -378,6 +504,7 @@ export function useRecommendations(initialLimit = 20) {
     refetch: () => fetchRecommendations(false),
     loadMore,
     toggleLike,
+    markNotInterested,
   };
 }
 

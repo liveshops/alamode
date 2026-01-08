@@ -109,13 +109,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     phoneNumber?: string
   ) => {
     try {
+      const normalizedUsername = username.toLowerCase().trim();
+
+      // Check if username is already taken BEFORE creating auth user
+      const { data: existingUser, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', normalizedUsername)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking username:', checkError);
+        return { error: new Error('Unable to verify username availability. Please try again.') };
+      }
+
+      if (existingUser) {
+        return { error: new Error('This username is already taken. Please choose a different one.') };
+      }
+
+      // Check if email is already registered
+      const { data: existingEmail } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.toLowerCase().trim())
+        .maybeSingle();
+
+      if (existingEmail) {
+        return { error: new Error('An account with this email already exists. Please sign in instead.') };
+      }
+
       // Create auth user with metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
-            username: username.toLowerCase(),
+            username: normalizedUsername,
             display_name: displayName,
             phone_number: phoneNumber || null,
           },
@@ -123,9 +152,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      if (authError) return { error: authError };
+      if (authError) {
+        console.error('Auth signup error:', authError);
+        return { error: authError };
+      }
 
-      // Profile will be created automatically by database trigger
+      // If auth user was created, ensure profile exists
+      // The trigger should create it, but we'll verify and create if needed
+      if (authData?.user) {
+        // Small delay to let trigger complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Check if profile was created by trigger
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+
+        if (!existingProfile) {
+          // Manually create profile if trigger failed
+          console.log('Profile not created by trigger, creating manually...');
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: authData.user.id,
+              username: normalizedUsername,
+              display_name: displayName,
+              email: email.toLowerCase().trim(),
+              phone_number: phoneNumber || null,
+            });
+
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+            // Don't fail signup if profile creation fails - user can still use the app
+            // and profile might be created on next login attempt
+          }
+        }
+      }
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };

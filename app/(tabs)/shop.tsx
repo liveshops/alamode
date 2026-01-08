@@ -3,11 +3,15 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
+    ActionSheetIOS,
     ActivityIndicator,
+    Alert,
     FlatList,
+    Platform,
     RefreshControl,
     StyleSheet,
     Text,
@@ -107,14 +111,17 @@ export default function NewTodayScreen() {
   const [offset, setOffset] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
-  const shouldRestoreScroll = useRef(false);
+  const hasLoadedRef = useRef(false);
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      shouldRestoreScroll.current = scrollPositionRef.current > 0;
-      fetchProducts();
+      // Only fetch if we haven't loaded data yet or user changed
+      // This prevents reload when returning from product detail
+      if (!hasLoadedRef.current || products.length === 0) {
+        fetchProducts();
+      }
     }, [user])
   );
 
@@ -218,20 +225,12 @@ export default function NewTodayScreen() {
       }
 
       setHasMore(productsWithLikes.length === FETCH_BATCH_SIZE);
+      hasLoadedRef.current = true;
     } catch (err) {
       console.error('Error fetching new today products:', err);
     } finally {
       setLoading(false);
       setLoadingMore(false);
-      if (shouldRestoreScroll.current) {
-        setTimeout(() => {
-          flatListRef.current?.scrollToOffset({
-            offset: scrollPositionRef.current,
-            animated: false,
-          });
-          shouldRestoreScroll.current = false;
-        }, 300);
-      }
     }
   };
 
@@ -308,10 +307,66 @@ export default function NewTodayScreen() {
     }
   };
 
+  const markNotInterested = async (productId: string) => {
+    if (!user) return;
+    
+    // Optimistically remove from feed
+    setProducts(prev => prev.filter(p => p.id !== productId));
+    
+    try {
+      await supabase.rpc('mark_not_interested', {
+        p_user_id: user.id,
+        p_product_id: productId,
+      });
+      console.log('[not-interested] Marked product as not interested:', productId);
+    } catch (err) {
+      console.error('Error marking not interested:', err);
+    }
+  };
+
   const handleLongPressItem = useCallback((product: { id: string; name: string }) => {
-    setSelectedProduct(product);
-    setCollectionSheetVisible(true);
-  }, []);
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Not Interested', 'Add to Collection'],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: 1,
+        },
+        (buttonIndex: number) => {
+          if (buttonIndex === 1) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            markNotInterested(product.id);
+          } else if (buttonIndex === 2) {
+            setSelectedProduct(product);
+            setCollectionSheetVisible(true);
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        product.name,
+        'Choose an action',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Not Interested',
+            style: 'destructive',
+            onPress: () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              markNotInterested(product.id);
+            },
+          },
+          {
+            text: 'Add to Collection',
+            onPress: () => {
+              setSelectedProduct(product);
+              setCollectionSheetVisible(true);
+            },
+          },
+        ]
+      );
+    }
+  }, [user]);
 
   if (loading && !refreshing) {
     return (

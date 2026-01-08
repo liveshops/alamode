@@ -1,15 +1,17 @@
 import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCollectionProducts } from '@/hooks/useCollections';
+import { useCollectionProducts, useCollections } from '@/hooks/useCollections';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
+    ActionSheetIOS,
     ActivityIndicator,
     Alert,
     FlatList,
+    Platform,
     RefreshControl,
     StyleSheet,
     Text,
@@ -33,12 +35,82 @@ export default function CollectionScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { products, loading, error, refetch, toggleLike } = useCollectionProducts(id);
+  const { removeProductFromCollection } = useCollections();
   const [collectionInfo, setCollectionInfo] = useState<CollectionInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
 
   const isOwner = collectionInfo?.user_id === user?.id;
+
+  const handleRemoveFromCollection = async (productId: string, productName: string) => {
+    Alert.alert(
+      'Remove from Collection',
+      `Remove "${productName}" from this collection?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await removeProductFromCollection(id, productId);
+            if (success) {
+              refetch();
+              fetchCollectionInfo();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleProductLongPress = (productId: string, productName: string) => {
+    if (isOwner) {
+      // Show action sheet with options for owner
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ['Cancel', 'Remove from Collection', 'Add to Another Collection'],
+            cancelButtonIndex: 0,
+            destructiveButtonIndex: 1,
+          },
+          (buttonIndex: number) => {
+            if (buttonIndex === 1) {
+              handleRemoveFromCollection(productId, productName);
+            } else if (buttonIndex === 2) {
+              setSelectedProduct({ id: productId, name: productName });
+              setCollectionSheetVisible(true);
+            }
+          }
+        );
+      } else {
+        // Android fallback using Alert
+        Alert.alert(
+          productName,
+          'Choose an action',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Remove from Collection',
+              style: 'destructive',
+              onPress: () => handleRemoveFromCollection(productId, productName),
+            },
+            {
+              text: 'Add to Another Collection',
+              onPress: () => {
+                setSelectedProduct({ id: productId, name: productName });
+                setCollectionSheetVisible(true);
+              },
+            },
+          ]
+        );
+      }
+    } else {
+      // Non-owner just gets add to collection option
+      setSelectedProduct({ id: productId, name: productName });
+      setCollectionSheetVisible(true);
+    }
+  };
 
   useEffect(() => {
     fetchCollectionInfo();
@@ -191,10 +263,7 @@ export default function CollectionScreen() {
               onPress={() => handleProductPress(item.product_id)}
               onLike={() => toggleLike(item.product_id)}
               onBrandPress={() => router.push(`/brand/${item.brand_slug}`)}
-              onLongPress={() => {
-                setSelectedProduct({ id: item.product_id, name: item.name });
-                setCollectionSheetVisible(true);
-              }}
+              onLongPress={() => handleProductLongPress(item.product_id, item.name)}
             />
           </View>
         )}

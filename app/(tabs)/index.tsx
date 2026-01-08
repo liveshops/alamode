@@ -3,15 +3,16 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHomeRefresh } from '@/contexts/HomeRefreshContext';
 import { useRecommendations } from '@/hooks/useRecommendations';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View, ViewToken } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View, ViewToken } from 'react-native';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { profile } = useAuth();
-  const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike } = useRecommendations(20);
+  const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike, markNotInterested } = useRecommendations(20);
   const [refreshing, setRefreshing] = useState(false);
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
@@ -67,9 +68,51 @@ export default function HomeScreen() {
   }, [toggleLike]);
 
   const handleLongPressItem = useCallback((product: { id: string; name: string }) => {
-    setSelectedProduct(product);
-    setCollectionSheetVisible(true);
-  }, []);
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Not Interested', 'Add to Collection'],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: 1,
+        },
+        (buttonIndex: number) => {
+          if (buttonIndex === 1) {
+            // Not Interested
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            markNotInterested(product.id);
+          } else if (buttonIndex === 2) {
+            // Add to Collection
+            setSelectedProduct(product);
+            setCollectionSheetVisible(true);
+          }
+        }
+      );
+    } else {
+      // Android fallback
+      Alert.alert(
+        product.name,
+        'Choose an action',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Not Interested',
+            style: 'destructive',
+            onPress: () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              markNotInterested(product.id);
+            },
+          },
+          {
+            text: 'Add to Collection',
+            onPress: () => {
+              setSelectedProduct(product);
+              setCollectionSheetVisible(true);
+            },
+          },
+        ]
+      );
+    }
+  }, [markNotInterested]);
 
   // Prefetch images for upcoming products - reduced count to minimize memory pressure
   const prefetchImages = useCallback((startIndex: number) => {

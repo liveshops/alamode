@@ -42,7 +42,42 @@ class ShopifyScraperNewOnly extends BaseScraperNewOnly {
   }
 
   /**
-   * Fetch from /products.json endpoint (most reliable)
+   * Get the most recent product created_at for this brand from our database
+   * This tells us when to start looking for new products
+   */
+  async getLastSyncDate() {
+    try {
+      const { data, error } = await this.supabase
+        .from('products')
+        .select('created_at')
+        .eq('brand_id', this.brand.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error || !data) {
+        // No products yet, fetch last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        return thirtyDaysAgo.toISOString();
+      }
+
+      // Use the most recent product's created_at, minus 1 day buffer for safety
+      const lastDate = new Date(data.created_at);
+      lastDate.setDate(lastDate.getDate() - 1);
+      return lastDate.toISOString();
+    } catch (error) {
+      this.log(`Error getting last sync date: ${error.message}`, 'warning');
+      // Default to 7 days ago
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      return sevenDaysAgo.toISOString();
+    }
+  }
+
+  /**
+   * Fetch from /products.json endpoint with created_at_min filter
+   * This is the KEY optimization - only fetch products created after our last sync
    */
   async fetchFromProductsAPI() {
     try {
@@ -50,24 +85,37 @@ class ShopifyScraperNewOnly extends BaseScraperNewOnly {
       let page = 1;
       let hasMore = true;
 
+      // Get the date of our most recent product for this brand
+      const lastSyncDate = await this.getLastSyncDate();
+      this.log(`Fetching products created after: ${lastSyncDate}`, 'info');
+
       while (hasMore) {
-        const url = `${this.brand.website_url}/products.json?limit=250&page=${page}`;
-        this.log(`Fetching page ${page} from products.json`);
+        // Use created_at_min to only get NEW products from Shopify
+        const url = `${this.brand.website_url}/products.json?limit=250&page=${page}&created_at_min=${encodeURIComponent(lastSyncDate)}`;
+        this.log(`Fetching page ${page} (new products only)`);
         
         const response = await this.makeRequest(url);
         const data = await response.json();
 
         if (data.products && data.products.length > 0) {
+          this.log(`Page ${page}: Found ${data.products.length} products created after ${lastSyncDate.split('T')[0]}`);
           const normalizedProducts = data.products.map(p => this.normalizeShopifyProduct(p));
           products.push(...normalizedProducts);
           
           page++;
           await this.delay();
+          
+          // Safety limit - if we're getting too many pages, something might be wrong
+          if (page > 10) {
+            this.log('Reached 10 pages, stopping to prevent infinite loop', 'warning');
+            hasMore = false;
+          }
         } else {
           hasMore = false;
         }
       }
 
+      this.log(`Total new products found: ${products.length}`, 'success');
       return products;
     } catch (error) {
       this.log(`products.json fetch failed: ${error.message}`, 'warning');
@@ -76,19 +124,21 @@ class ShopifyScraperNewOnly extends BaseScraperNewOnly {
   }
 
   /**
-   * Fetch from collection products endpoint
+   * Fetch from collection products endpoint (also with date filter)
    */
   async fetchFromCollectionAPI(collectionPath) {
     try {
       const handle = collectionPath.split('/').filter(Boolean).pop();
-      const url = `${this.brand.website_url}/collections/${handle}/products.json?limit=250`;
+      const lastSyncDate = await this.getLastSyncDate();
+      const url = `${this.brand.website_url}/collections/${handle}/products.json?limit=250&created_at_min=${encodeURIComponent(lastSyncDate)}`;
       
-      this.log(`Fetching from collection: ${handle}`);
+      this.log(`Fetching from collection: ${handle} (products after ${lastSyncDate.split('T')[0]})`);
       
       const response = await this.makeRequest(url);
       const data = await response.json();
 
       if (data.products && data.products.length > 0) {
+        this.log(`Found ${data.products.length} new products in collection ${handle}`);
         return data.products.map(p => this.normalizeShopifyProduct(p));
       }
 
