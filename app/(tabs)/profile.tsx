@@ -1,4 +1,5 @@
 import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
+import { BrandRowCard } from '@/components/BrandRowCard';
 import { CollectionRow } from '@/components/CollectionRow';
 import { LinkableText } from '@/components/LinkableText';
 import { ProductCard } from '@/components/ProductCard';
@@ -21,6 +22,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+interface BrandWithProducts {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  follower_count: number;
+  products: Product[];
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -31,6 +41,9 @@ export default function ProfileScreen() {
   const [followingCount, setFollowingCount] = useState(0);
   const [likedItemsCount, setLikedItemsCount] = useState(0);
   const [followedBrandsCount, setFollowedBrandsCount] = useState(0);
+  const [followedBrands, setFollowedBrands] = useState<BrandWithProducts[]>([]);
+  const [brandsLoaded, setBrandsLoaded] = useState(false);
+  const [brandsLoading, setBrandsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'liked' | 'collections' | 'brands'>('liked');
@@ -39,13 +52,25 @@ export default function ProfileScreen() {
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const shouldRestoreScroll = useRef(false);
+  const hasLoadedRef = useRef(false);
 
   const { collections, refetch: refetchCollections } = useCollections();
 
   useFocusEffect(
     useCallback(() => {
-      shouldRestoreScroll.current = scrollPositionRef.current > 0;
-      fetchProfileData();
+      // Only fetch if we haven't loaded data yet
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true;
+        fetchProfileData();
+      } else if (scrollPositionRef.current > 0) {
+        // Returning from product view - just restore scroll position
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({
+            offset: scrollPositionRef.current,
+            animated: false,
+          });
+        }, 50);
+      }
     }, [user])
   );
 
@@ -71,7 +96,7 @@ export default function ProfileScreen() {
         setLikedItemsCount(profileData.liked_items_count || 0);
       }
 
-      // Fetch count of brands user follows
+      // Fetch count of brands user follows (just the count, not products - lazy load those)
       const { count: brandsCount } = await supabase
         .from('user_follows_brands')
         .select('*', { count: 'exact', head: true })
@@ -124,8 +149,91 @@ export default function ProfileScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setBrandsLoaded(false); // Reset so brands reload on next tab visit
     await fetchProfileData();
     setRefreshing(false);
+  };
+
+  // Lazy load brands with products when Brands tab is selected
+  const fetchBrandsWithProducts = async () => {
+    if (!user || brandsLoaded || brandsLoading) return;
+
+    try {
+      setBrandsLoading(true);
+
+      // Fetch brands user follows
+      const { data: followedBrandsData, error: brandsError } = await supabase
+        .from('user_follows_brands')
+        .select(`
+          brand_id,
+          brands (
+            id,
+            name,
+            slug,
+            logo_url,
+            follower_count
+          )
+        `)
+        .eq('user_id', user.id);
+
+      if (brandsError) throw brandsError;
+
+      // Fetch products for each brand
+      const brandsWithProducts: BrandWithProducts[] = [];
+      for (const item of followedBrandsData || []) {
+        const brand = Array.isArray(item.brands) ? item.brands[0] : item.brands;
+        if (!brand) continue;
+
+        const { data: productsData } = await supabase
+          .from('products')
+          .select('*')
+          .eq('brand_id', brand.id)
+          .eq('is_available', true)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        // Check which products the user has liked
+        let productsWithLikes = productsData || [];
+        if (productsData && productsData.length > 0) {
+          const productIds = productsData.map((p) => p.id);
+          const { data: likedProducts } = await supabase
+            .from('user_likes_products')
+            .select('product_id')
+            .eq('user_id', user.id)
+            .in('product_id', productIds);
+
+          const likedProductIds = new Set(likedProducts?.map((l) => l.product_id) || []);
+          productsWithLikes = productsData.map((product) => ({
+            ...product,
+            is_liked: likedProductIds.has(product.id),
+          }));
+        }
+
+        brandsWithProducts.push({
+          id: brand.id,
+          name: brand.name,
+          slug: brand.slug,
+          logo_url: brand.logo_url,
+          follower_count: brand.follower_count,
+          products: productsWithLikes,
+        });
+      }
+
+      setFollowedBrands(brandsWithProducts);
+      setBrandsLoaded(true);
+    } catch (err) {
+      console.error('Error fetching brands:', err);
+    } finally {
+      setBrandsLoading(false);
+    }
+  };
+
+  // Handle tab selection - lazy load brands if needed
+  const handleTabSelect = (tab: 'liked' | 'collections' | 'brands') => {
+    setActiveTab(tab);
+    if (tab === 'brands' && !brandsLoaded && !brandsLoading) {
+      fetchBrandsWithProducts();
+    }
   };
 
   const handleProductPress = (productId: string) => {
@@ -176,6 +284,110 @@ export default function ProfileScreen() {
 
   const handleAddedToCollection = (collectionName: string) => {
     refetchCollections();
+  };
+
+  // Handler for toggling follow on a brand (from brands tab)
+  const handleToggleFollow = async (brandId: string) => {
+    if (!user) return;
+
+    // Since we're viewing our own followed brands, unfollowing removes from list
+    const brandToRemove = followedBrands.find(b => b.id === brandId);
+    if (!brandToRemove) return;
+
+    // Optimistically remove from list
+    setFollowedBrands(prev => prev.filter(b => b.id !== brandId));
+    setFollowedBrandsCount(prev => Math.max(0, prev - 1));
+
+    try {
+      await supabase
+        .from('user_follows_brands')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('brand_id', brandId);
+    } catch (err) {
+      console.error('Error unfollowing brand:', err);
+      // Revert on error
+      setFollowedBrands(prev => [...prev, brandToRemove]);
+      setFollowedBrandsCount(prev => prev + 1);
+    }
+  };
+
+  // Handler for toggling like on products within brand rows
+  const handleBrandProductLike = async (productId: string) => {
+    if (!user) return;
+
+    // Find the product across all brands
+    let targetBrand: BrandWithProducts | undefined;
+    let targetProduct: Product | undefined;
+
+    for (const brand of followedBrands) {
+      const product = brand.products.find((p) => p.id === productId);
+      if (product) {
+        targetBrand = brand;
+        targetProduct = product;
+        break;
+      }
+    }
+
+    if (!targetBrand || !targetProduct) return;
+
+    const wasLiked = targetProduct.is_liked;
+
+    // Optimistic update
+    setFollowedBrands((prev) =>
+      prev.map((brand) =>
+        brand.id === targetBrand!.id
+          ? {
+              ...brand,
+              products: brand.products.map((p) =>
+                p.id === productId
+                  ? {
+                      ...p,
+                      is_liked: !wasLiked,
+                      like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
+                    }
+                  : p
+              ),
+            }
+          : brand
+      )
+    );
+
+    try {
+      if (wasLiked) {
+        await supabase
+          .from('user_likes_products')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('product_id', productId);
+      } else {
+        await supabase.from('user_likes_products').upsert(
+          { user_id: user.id, product_id: productId },
+          { onConflict: 'user_id,product_id', ignoreDuplicates: true }
+        );
+      }
+    } catch (err) {
+      console.error('Error toggling like:', err);
+      // Revert on error
+      setFollowedBrands((prev) =>
+        prev.map((brand) =>
+          brand.id === targetBrand!.id
+            ? {
+                ...brand,
+                products: brand.products.map((p) =>
+                  p.id === productId
+                    ? {
+                        ...p,
+                        is_liked: wasLiked,
+                        like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
+                      }
+                    : p
+                ),
+              }
+            : brand
+        )
+      );
+    }
   };
 
   if (loading && !refreshing) {
@@ -278,7 +490,7 @@ export default function ProfileScreen() {
             <View style={styles.categoryTabs}>
               <TouchableOpacity
                 style={styles.categoryTab}
-                onPress={() => setActiveTab('liked')}
+                onPress={() => handleTabSelect('liked')}
                 activeOpacity={0.7}>
                 <View style={[styles.categoryBadge, activeTab !== 'liked' && styles.categoryBadgeInactive]}>
                   <Ionicons name="heart" size={16} color={activeTab === 'liked' ? '#fff' : '#666'} />
@@ -288,7 +500,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.categoryTab}
-                onPress={() => setActiveTab('collections')}
+                onPress={() => handleTabSelect('collections')}
                 activeOpacity={0.7}>
                 <View style={[styles.categoryBadge, activeTab !== 'collections' && styles.categoryBadgeInactive]}>
                   <Ionicons name="folder" size={16} color={activeTab === 'collections' ? '#fff' : '#666'} />
@@ -298,13 +510,13 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.categoryTab}
-                onPress={() => router.push(`/user/${user?.id}/brands`)}
+                onPress={() => handleTabSelect('brands')}
                 activeOpacity={0.7}>
                 <View style={[styles.categoryBadge, activeTab !== 'brands' && styles.categoryBadgeInactive]}>
                   <Ionicons name="heart" size={16} color={activeTab === 'brands' ? '#fff' : '#666'} />
                   <Text style={[styles.categoryBadgeText, activeTab !== 'brands' && styles.categoryBadgeTextInactive]}>{followedBrandsCount}</Text>
                 </View>
-                <Text style={styles.categoryTabText}>Favorite Brands</Text>
+                <Text style={[styles.categoryTabText, activeTab === 'brands' && styles.categoryTabTextActive]}>Favorite Brands</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -331,6 +543,37 @@ export default function ProfileScreen() {
               <View style={styles.collectionsContainer}>
                 {collections.map((collection) => (
                   <CollectionRow key={collection.id} collection={collection} />
+                ))}
+              </View>
+            )
+          ) : activeTab === 'brands' ? (
+            brandsLoading ? (
+              <View style={styles.emptyContainer}>
+                <ActivityIndicator size="large" color="#000" />
+              </View>
+            ) : followedBrands.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="heart-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyText}>No favorite brands yet</Text>
+                <Text style={styles.emptySubtext}>
+                  Brands you follow will appear here
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.brandsContainer}>
+                {followedBrands.map((brand) => (
+                  <BrandRowCard
+                    key={brand.id}
+                    brandName={brand.name}
+                    brandSlug={brand.slug}
+                    isFollowing={true}
+                    followerCount={brand.follower_count}
+                    products={brand.products}
+                    onBrandPress={() => handleBrandPress(brand.slug)}
+                    onToggleFollow={() => handleToggleFollow(brand.id)}
+                    onProductPress={handleProductPress}
+                    onToggleLike={handleBrandProductLike}
+                  />
                 ))}
               </View>
             )
@@ -562,6 +805,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   collectionsContainer: {
+    paddingTop: 0,
+  },
+  brandsContainer: {
     paddingTop: 0,
   },
   emptyContainer: {

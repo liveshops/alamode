@@ -7,15 +7,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Image,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -42,16 +42,33 @@ export default function BrandProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'newest' | 'popular'>('newest');
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const shouldRestoreScroll = useRef(false);
+  const hasLoadedRef = useRef(false);
+  const loadedSlugRef = useRef<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      shouldRestoreScroll.current = scrollPositionRef.current > 0;
-      fetchBrandData();
+      // Only fetch if we haven't loaded data for this slug yet
+      const needsFetch = !hasLoadedRef.current || loadedSlugRef.current !== slug;
+      
+      if (needsFetch) {
+        hasLoadedRef.current = true;
+        loadedSlugRef.current = slug;
+        fetchBrandData();
+      } else if (scrollPositionRef.current > 0) {
+        // Returning from product view - just restore scroll position
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({
+            offset: scrollPositionRef.current,
+            animated: false,
+          });
+        }, 50);
+      }
     }, [slug, user])
   );
 
@@ -142,27 +159,33 @@ export default function BrandProfileScreen() {
         }));
 
         setProducts(productsWithLikes);
-        // Apply existing search filter if there's an active query
+        // Apply existing search and sort filters
+        let filtered = productsWithLikes;
         if (searchQuery.trim()) {
-          const filtered = productsWithLikes.filter((p: Product) =>
+          filtered = filtered.filter((p: Product) =>
             p.name.toLowerCase().includes(searchQuery.toLowerCase())
           );
-          setFilteredProducts(filtered);
-        } else {
-          setFilteredProducts(productsWithLikes);
         }
+        // Sort by current sortBy (default is 'newest' which matches the API order)
+        if (sortBy === 'popular') {
+          filtered = [...filtered].sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+        }
+        setFilteredProducts(filtered);
       } else {
         const allProducts = productsData || [];
         setProducts(allProducts);
-        // Apply existing search filter if there's an active query
+        // Apply existing search and sort filters
+        let filtered = allProducts;
         if (searchQuery.trim()) {
-          const filtered = allProducts.filter((p: Product) =>
+          filtered = filtered.filter((p: Product) =>
             p.name.toLowerCase().includes(searchQuery.toLowerCase())
           );
-          setFilteredProducts(filtered);
-        } else {
-          setFilteredProducts(allProducts);
         }
+        // Sort by current sortBy (default is 'newest' which matches the API order)
+        if (sortBy === 'popular') {
+          filtered = [...filtered].sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+        }
+        setFilteredProducts(filtered);
       }
     } catch (err) {
       console.error('Error fetching brand:', err);
@@ -188,16 +211,36 @@ export default function BrandProfileScreen() {
     setRefreshing(false);
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      setFilteredProducts(products);
-    } else {
-      const filtered = products.filter((p) =>
+  // Helper to sort products
+  const sortProducts = (productsToSort: Product[], sort: 'newest' | 'popular') => {
+    return [...productsToSort].sort((a, b) => {
+      if (sort === 'popular') {
+        return (b.like_count || 0) - (a.like_count || 0);
+      }
+      // newest - sort by created_at descending
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  };
+
+  // Apply search and sort filters
+  const applyFilters = (allProducts: Product[], query: string, sort: 'newest' | 'popular') => {
+    let result = allProducts;
+    if (query.trim() !== '') {
+      result = result.filter((p) =>
         p.name.toLowerCase().includes(query.toLowerCase())
       );
-      setFilteredProducts(filtered);
     }
+    return sortProducts(result, sort);
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setFilteredProducts(applyFilters(products, query, sortBy));
+  };
+
+  const handleSortChange = (sort: 'newest' | 'popular') => {
+    setSortBy(sort);
+    setFilteredProducts(applyFilters(products, searchQuery, sort));
   };
 
   const handleToggleFollow = async () => {
@@ -412,6 +455,26 @@ export default function BrandProfileScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
+
+            {/* Sort Toggle */}
+            <View style={styles.sortContainer}>
+              <TouchableOpacity
+                style={[styles.sortButton, sortBy === 'newest' && styles.sortButtonActive]}
+                onPress={() => handleSortChange('newest')}
+                activeOpacity={0.7}>
+                <Text style={[styles.sortButtonText, sortBy === 'newest' && styles.sortButtonTextActive]}>
+                  NEWEST
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sortButton, sortBy === 'popular' && styles.sortButtonActive]}
+                onPress={() => handleSortChange('popular')}
+                activeOpacity={0.7}>
+                <Text style={[styles.sortButtonText, sortBy === 'popular' && styles.sortButtonTextActive]}>
+                  MOST LIKED
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         }
         ListEmptyComponent={
@@ -579,6 +642,31 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#000',
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    marginTop: 16,
+    width: '100%',
+  },
+  sortButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  sortButtonActive: {
+    borderBottomColor: '#000',
+  },
+  sortButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#999',
+    letterSpacing: 0.5,
+  },
+  sortButtonTextActive: {
+    color: '#000',
+    fontWeight: '600',
   },
   row: {
     justifyContent: 'space-between',

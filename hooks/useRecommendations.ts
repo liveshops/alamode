@@ -470,19 +470,11 @@ export function useRecommendations(initialLimit = 20) {
       .map(p => {
         let penalty = 0;
         
-        // Deprioritize by brand (more not interested = bigger penalty)
-        const brandCount = notInterestedBrandCounts.current.get(p.brand_id) || 0;
-        if (brandCount > 0) {
-          // Each not-interested item from this brand adds 5% penalty, max 50%
-          penalty += Math.min(brandCount * 0.05, 0.5);
-        }
-        
-        // Deprioritize by category - need to match by name since we have category name
-        // This is a simplified version; ideally we'd match by ID
+        // Deprioritize by category only (brand is not penalized)
         for (const [categoryId, count] of notInterestedCategoryCounts.current) {
           if (count > 0) {
-            // Each not-interested item from this category adds 3% penalty, max 30%
-            penalty += Math.min(count * 0.03, 0.3);
+            // Each not-interested item from this category adds 5% penalty, max 50%
+            penalty += Math.min(count * 0.05, 0.5);
           }
         }
         

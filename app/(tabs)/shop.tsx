@@ -5,7 +5,7 @@ import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActionSheetIOS,
     ActivityIndicator,
@@ -20,8 +20,33 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const PRODUCTS_PER_PAGE = 20;
 const FETCH_BATCH_SIZE = 100; // Fetch more to enable better interleaving
+const MAX_DAYS_BACK = 14; // How far back to go
+
+// Types for feed items (products + section headers)
+type FeedItem = 
+  | { type: 'product'; data: Product }
+  | { type: 'section'; dayOffset: number; label: string };
+
+// Get label for day offset
+const getDayLabel = (dayOffset: number): string => {
+  if (dayOffset === 0) return 'New Today';
+  if (dayOffset === 1) return 'Yesterday';
+  return `${dayOffset} Days Ago`;
+};
+
+// Get date range for a specific day offset (0 = today, 1 = yesterday, etc.)
+const getDayRange = (dayOffset: number): { start: Date; end: Date } => {
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() - dayOffset + 1); // Start of "tomorrow" for today's range
+  
+  const start = new Date(end);
+  start.setDate(start.getDate() - 1); // Start of the day
+  
+  return { start, end };
+};
 
 // Score and rank products based on user preferences, then interleave by brand
 const scoreAndInterleaveProducts = (
@@ -103,46 +128,63 @@ export default function NewTodayScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const [products, setProducts] = useState<Product[]>([]);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [offset, setOffset] = useState(0);
+  const [currentDayOffset, setCurrentDayOffset] = useState(0);
+  const [dayOffset_internal, setDayOffsetInternal] = useState(0); // Track which day we're fetching
+  const [followedBrandIds, setFollowedBrandIds] = useState<string[]>([]);
+  const [brandAffinityScores, setBrandAffinityScores] = useState<Map<string, number>>(new Map());
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
   const hasLoadedRef = useRef(false);
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
 
+  // Fetch on initial load only
   useFocusEffect(
     useCallback(() => {
-      // Only fetch if we haven't loaded data yet or user changed
+      // Only fetch if we haven't loaded data yet
       // This prevents reload when returning from product detail
-      if (!hasLoadedRef.current || products.length === 0) {
-        fetchProducts();
+      if (!hasLoadedRef.current) {
+        initializeFeed();
+      } else {
+        // Restore scroll position when returning to this screen
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({
+            offset: scrollPositionRef.current,
+            animated: false,
+          });
+        }, 50);
       }
-    }, [user])
+    }, [])
   );
 
-  const fetchProducts = async (reset = true) => {
+  // Refetch if user changes (login/logout)
+  useEffect(() => {
+    if (user && !hasLoadedRef.current) {
+      initializeFeed();
+    } else if (!user) {
+      setFeedItems([]);
+      setFollowedBrandIds([]);
+      hasLoadedRef.current = false;
+    }
+  }, [user]);
+
+  // Initialize the feed - fetch user data and first day's products
+  const initializeFeed = async () => {
     if (!user) {
-      setProducts([]);
+      setFeedItems([]);
       setLoading(false);
       return;
     }
 
     try {
-      if (reset) {
-        setLoading(true);
-        setOffset(0);
-      }
-
-      const currentOffset = reset ? 0 : offset;
-
-      // Get the timestamp for 24 hours ago
-      const twentyFourHoursAgo = new Date();
-      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+      setLoading(true);
+      setCurrentDayOffset(0);
+      setDayOffsetInternal(0);
 
       // First, get followed brand IDs
       const { data: followedBrands, error: followError } = await supabase
@@ -152,10 +194,11 @@ export default function NewTodayScreen() {
 
       if (followError) throw followError;
 
-      const followedBrandIds = followedBrands?.map(f => f.brand_id) || [];
+      const brandIds = followedBrands?.map(f => f.brand_id) || [];
+      setFollowedBrandIds(brandIds);
 
-      if (followedBrandIds.length === 0) {
-        setProducts([]);
+      if (brandIds.length === 0) {
+        setFeedItems([]);
         setLoading(false);
         setHasMore(false);
         return;
@@ -168,81 +211,114 @@ export default function NewTodayScreen() {
         .eq('user_id', user.id);
 
       // Build brand affinity map (brand_id -> count of liked products)
-      const brandAffinityScores = new Map<string, number>();
+      const affinityScores = new Map<string, number>();
       for (const item of likedProductsBrands || []) {
         const brandId = (item.products as any)?.brand_id;
         if (brandId) {
-          brandAffinityScores.set(brandId, (brandAffinityScores.get(brandId) || 0) + 1);
+          affinityScores.set(brandId, (affinityScores.get(brandId) || 0) + 1);
         }
       }
+      setBrandAffinityScores(affinityScores);
 
-      // Fetch products from followed brands added in the last 24 hours
-      // Fetch a larger batch to enable better interleaving across brands
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select(`
-          id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
-          brand:brands(id, name, slug, logo_url)
-        `)
-        .in('brand_id', followedBrandIds)
-        .eq('is_available', true)
-        .gte('created_at', twentyFourHoursAgo.toISOString())
-        .order('created_at', { ascending: false })
-        .range(currentOffset, currentOffset + FETCH_BATCH_SIZE - 1);
-
-      if (productsError) throw productsError;
-
-      // Check which products the user has liked
-      let productsWithLikes = productsData || [];
-      if (productsWithLikes.length > 0) {
-        const productIds = productsWithLikes.map(p => p.id);
-        const { data: likedData } = await supabase
-          .from('user_likes_products')
-          .select('product_id')
-          .eq('user_id', user.id)
-          .in('product_id', productIds);
-
-        const likedIds = new Set(likedData?.map(l => l.product_id) || []);
-        productsWithLikes = productsWithLikes.map(p => ({
-          ...p,
-          is_liked: likedIds.has(p.id),
-        }));
-      }
-
-      // Score and interleave products by brand for variety + preference ranking
-      const interleavedProducts = scoreAndInterleaveProducts(productsWithLikes, brandAffinityScores);
-
-      if (reset) {
-        setProducts(interleavedProducts as any);
-        setOffset(FETCH_BATCH_SIZE);
-      } else {
-        setProducts(prev => {
-          const existingIds = new Set(prev.map(p => p.id));
-          const newProducts = interleavedProducts.filter((p: any) => !existingIds.has(p.id));
-          return [...prev, ...newProducts] as any;
-        });
-        setOffset(prev => prev + FETCH_BATCH_SIZE);
-      }
-
-      setHasMore(productsWithLikes.length === FETCH_BATCH_SIZE);
+      // Fetch first day's products
+      const dayProducts = await fetchProductsForDay(0, brandIds, affinityScores);
+      
+      // Start with "New Today" section header + products
+      const items: FeedItem[] = [
+        { type: 'section', dayOffset: 0, label: getDayLabel(0) },
+        ...dayProducts.map(p => ({ type: 'product' as const, data: p })),
+      ];
+      
+      setFeedItems(items);
+      setHasMore(true);
       hasLoadedRef.current = true;
     } catch (err) {
-      console.error('Error fetching new today products:', err);
+      console.error('Error initializing feed:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch products for a specific day
+  const fetchProductsForDay = async (
+    dayOffset: number,
+    brandIds: string[],
+    affinityScores: Map<string, number>
+  ): Promise<Product[]> => {
+    const { start, end } = getDayRange(dayOffset);
+    
+    const { data: productsData, error: productsError } = await supabase
+      .from('products')
+      .select(`
+        id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
+        brand:brands(id, name, slug, logo_url)
+      `)
+      .in('brand_id', brandIds)
+      .eq('is_available', true)
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(FETCH_BATCH_SIZE);
+
+    if (productsError) throw productsError;
+
+    // Check which products the user has liked
+    let productsWithLikes = productsData || [];
+    if (productsWithLikes.length > 0 && user) {
+      const productIds = productsWithLikes.map(p => p.id);
+      const { data: likedData } = await supabase
+        .from('user_likes_products')
+        .select('product_id')
+        .eq('user_id', user.id)
+        .in('product_id', productIds);
+
+      const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+      productsWithLikes = productsWithLikes.map(p => ({
+        ...p,
+        is_liked: likedIds.has(p.id),
+      }));
+    }
+
+    // Score and interleave products by brand for variety + preference ranking
+    return scoreAndInterleaveProducts(productsWithLikes, affinityScores) as Product[];
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || followedBrandIds.length === 0) return;
+    setLoadingMore(true);
+    
+    try {
+      // Move to next day
+      const nextDayOffset = currentDayOffset + 1;
+      
+      if (nextDayOffset >= MAX_DAYS_BACK) {
+        setHasMore(false);
+        setLoadingMore(false);
+        return;
+      }
+
+      const dayProducts = await fetchProductsForDay(nextDayOffset, followedBrandIds, brandAffinityScores);
+      
+      // Add section header + products for this day
+      const newItems: FeedItem[] = [
+        { type: 'section', dayOffset: nextDayOffset, label: getDayLabel(nextDayOffset) },
+        ...dayProducts.map(p => ({ type: 'product' as const, data: p })),
+      ];
+      
+      setFeedItems(prev => [...prev, ...newItems]);
+      setCurrentDayOffset(nextDayOffset);
+      setHasMore(nextDayOffset < MAX_DAYS_BACK - 1);
+    } catch (err) {
+      console.error('Error loading more products:', err);
+    } finally {
       setLoadingMore(false);
     }
   };
 
-  const loadMore = async () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    await fetchProducts(false);
-  };
-
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchProducts();
+    hasLoadedRef.current = false;
+    await initializeFeed();
     setRefreshing(false);
   };
 
@@ -257,21 +333,25 @@ export default function NewTodayScreen() {
   const handleToggleLike = async (productId: string) => {
     if (!user) return;
 
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-
+    const productItem = feedItems.find(item => item.type === 'product' && item.data.id === productId);
+    if (!productItem || productItem.type !== 'product') return;
+    
+    const product = productItem.data;
     const wasLiked = product.is_liked;
 
     // Optimistic update
-    setProducts(prev =>
-      prev.map(p =>
-        p.id === productId
+    setFeedItems(prev =>
+      prev.map(item =>
+        item.type === 'product' && item.data.id === productId
           ? {
-              ...p,
-              is_liked: !wasLiked,
-              like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
+              ...item,
+              data: {
+                ...item.data,
+                is_liked: !wasLiked,
+                like_count: wasLiked ? Math.max(0, item.data.like_count - 1) : item.data.like_count + 1,
+              },
             }
-          : p
+          : item
       )
     );
 
@@ -293,15 +373,18 @@ export default function NewTodayScreen() {
     } catch (err) {
       console.error('Error toggling like:', err);
       // Revert on error
-      setProducts(prev =>
-        prev.map(p =>
-          p.id === productId
+      setFeedItems(prev =>
+        prev.map(item =>
+          item.type === 'product' && item.data.id === productId
             ? {
-                ...p,
-                is_liked: wasLiked,
-                like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
+                ...item,
+                data: {
+                  ...item.data,
+                  is_liked: wasLiked,
+                  like_count: wasLiked ? item.data.like_count + 1 : Math.max(0, item.data.like_count - 1),
+                },
               }
-            : p
+            : item
         )
       );
     }
@@ -311,7 +394,9 @@ export default function NewTodayScreen() {
     if (!user) return;
     
     // Optimistically remove from feed
-    setProducts(prev => prev.filter(p => p.id !== productId));
+    setFeedItems(prev => prev.filter(item => 
+      item.type !== 'product' || item.data.id !== productId
+    ));
     
     try {
       await supabase.rpc('mark_not_interested', {
@@ -376,17 +461,56 @@ export default function NewTodayScreen() {
     );
   }
 
-  const renderProductItem = ({ item }: { item: Product }) => (
-    <View style={styles.cardWrapper}>
+  // Get only product items for display calculations
+  const products = feedItems.filter((item): item is { type: 'product'; data: Product } => item.type === 'product');
+
+  // Render section header
+  const renderSectionHeader = (label: string) => (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionLine} />
+      <Text style={styles.sectionLabel}>{label}</Text>
+      <View style={styles.sectionLine} />
+    </View>
+  );
+
+  // Render a single product card
+  const renderProductCard = (product: Product) => (
+    <View style={styles.cardWrapper} key={product.id}>
       <ProductCard
-        product={item}
-        onPress={() => handleProductPress(item.id)}
-        onLike={() => handleToggleLike(item.id)}
-        onBrandPress={() => handleBrandPress(item.brand?.slug || '')}
-        onLongPress={() => handleLongPressItem({ id: item.id, name: item.name })}
+        product={product}
+        onPress={() => handleProductPress(product.id)}
+        onLike={() => handleToggleLike(product.id)}
+        onBrandPress={() => handleBrandPress(product.brand?.slug || '')}
+        onLongPress={() => handleLongPressItem({ id: product.id, name: product.name })}
       />
     </View>
   );
+
+  // Render feed item (section or product row)
+  const renderFeedItem = ({ item, index }: { item: FeedItem; index: number }) => {
+    if (item.type === 'section') {
+      return renderSectionHeader(item.label);
+    }
+    
+    // For products, we need to render in pairs (2 columns)
+    // Only render on even indices to avoid duplicates
+    const productItems = feedItems.filter(i => i.type === 'product') as { type: 'product'; data: Product }[];
+    const productIndex = productItems.findIndex(p => p.data.id === item.data.id);
+    
+    // Skip odd product indices (they're rendered with the previous item)
+    if (productIndex % 2 !== 0) return null;
+    
+    const currentProduct = item.data;
+    const nextProductItem = productItems[productIndex + 1];
+    const nextProduct = nextProductItem?.data;
+    
+    return (
+      <View style={styles.rowWrapper}>
+        {renderProductCard(currentProduct)}
+        {nextProduct ? renderProductCard(nextProduct) : <View style={styles.cardWrapper} />}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -400,11 +524,11 @@ export default function NewTodayScreen() {
       {/* Products Grid */}
       <FlatList
         ref={flatListRef}
-        data={products}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
+        data={feedItems}
+        keyExtractor={(item, index) => 
+          item.type === 'section' ? `section-${item.dayOffset}` : `product-${item.data.id}`
+        }
         contentContainerStyle={styles.listContent}
-        columnWrapperStyle={styles.columnWrapper}
         showsVerticalScrollIndicator={false}
         onScroll={(e) => {
           scrollPositionRef.current = e.nativeEvent.contentOffset.y;
@@ -426,11 +550,11 @@ export default function NewTodayScreen() {
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No new products today</Text>
             <Text style={styles.emptySubtext}>
-              Products from brands you follow added in the last 24 hours will appear here
+              Products from brands you follow will appear here
             </Text>
           </View>
         }
-        renderItem={renderProductItem}
+        renderItem={renderFeedItem}
       />
 
       {/* Add to Collection Sheet */}
@@ -475,13 +599,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 8,
   },
-  columnWrapper: {
+  rowWrapper: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
   },
   cardWrapper: {
     width: '50%',
     paddingHorizontal: 4,
     marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    marginTop: 8,
+  },
+  sectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ddd',
+  },
+  sectionLabel: {
+    paddingHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   emptyContainer: {
     paddingVertical: 48,
