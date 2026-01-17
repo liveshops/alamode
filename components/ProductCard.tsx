@@ -204,7 +204,7 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    marginBottom: 8,
+    marginBottom: 0,
   },
   imageContainer: {
     position: 'relative',

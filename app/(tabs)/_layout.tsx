@@ -1,24 +1,25 @@
-import { HomeRefreshContext } from '@/contexts/HomeRefreshContext';
+import { TabRefreshContext } from '@/contexts/HomeRefreshContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, usePathname } from 'expo-router';
 import { useRef } from 'react';
 
 export default function TabsLayout() {
-  const refreshCallbackRef = useRef<(() => void) | null>(null);
+  const refreshCallbacksRef = useRef<Record<string, (() => void) | null>>({});
   const pathname = usePathname();
 
-  const triggerRefresh = () => {
-    if (refreshCallbackRef.current) {
-      refreshCallbackRef.current();
+  const triggerRefresh = (tab: 'home' | 'shop') => {
+    const callback = refreshCallbacksRef.current[tab];
+    if (callback) {
+      callback();
     }
   };
 
-  const registerRefresh = (callback: () => void) => {
-    refreshCallbackRef.current = callback;
+  const registerRefresh = (tab: 'home' | 'shop', callback: () => void) => {
+    refreshCallbacksRef.current[tab] = callback;
   };
 
   return (
-    <HomeRefreshContext.Provider value={{ triggerRefresh, registerRefresh }}>
+    <TabRefreshContext.Provider value={{ triggerRefresh, registerRefresh }}>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -39,7 +40,7 @@ export default function TabsLayout() {
             tabPress: (e) => {
               // If already on home tab, trigger refresh
               if (pathname === '/' || pathname === '/index' || pathname === '') {
-                triggerRefresh();
+                triggerRefresh('home');
               }
             },
           }}
@@ -51,6 +52,14 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="today" size={size} color={color} />
           ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            // If already on shop tab, trigger refresh
+            if (pathname === '/shop') {
+              triggerRefresh('shop');
+            }
+          },
         }}
       />
       <Tabs.Screen
@@ -75,6 +84,6 @@ export default function TabsLayout() {
         }}
       />
         </Tabs>
-    </HomeRefreshContext.Provider>
+    </TabRefreshContext.Provider>
   );
 }

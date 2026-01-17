@@ -1,6 +1,7 @@
 import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTabRefresh } from '@/contexts/HomeRefreshContext';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
@@ -127,6 +128,7 @@ export default function NewTodayScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { registerRefresh } = useTabRefresh();
 
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,6 +144,19 @@ export default function NewTodayScreen() {
   const hasLoadedRef = useRef(false);
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
+
+  // Scroll to top and refresh when tab is tapped while already on this screen
+  const scrollToTopAndRefresh = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    scrollPositionRef.current = 0;
+    hasLoadedRef.current = false;
+    initializeFeed();
+  }, []);
+
+  // Register the refresh callback with the tab layout
+  useEffect(() => {
+    registerRefresh('shop', scrollToTopAndRefresh);
+  }, [registerRefresh, scrollToTopAndRefresh]);
 
   // Fetch on initial load only
   useFocusEffect(
@@ -257,8 +272,7 @@ export default function NewTodayScreen() {
       .eq('is_available', true)
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(FETCH_BATCH_SIZE);
+      .order('created_at', { ascending: false });
 
     if (productsError) throw productsError;
 
