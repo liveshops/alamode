@@ -42,7 +42,7 @@ export default function BrandProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'newest' | 'popular'>('newest');
+  const [sortBy, setSortBy] = useState<'newest' | 'popular'>('popular');
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
