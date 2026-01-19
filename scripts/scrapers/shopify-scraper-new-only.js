@@ -85,7 +85,6 @@ class ShopifyScraperNewOnly extends BaseScraperNewOnly {
       const newProducts = [];
       let page = 1;
       let hasMore = true;
-      let consecutiveOldPages = 0;
 
       // Get the date of our most recent product for this brand
       const lastSyncDate = await this.getLastSyncDate();
@@ -110,26 +109,18 @@ class ShopifyScraperNewOnly extends BaseScraperNewOnly {
             this.log(`Page ${page}: Found ${pageNewProducts.length} NEW products (of ${data.products.length} total)`);
             const normalizedProducts = pageNewProducts.map(p => this.normalizeShopifyProduct(p));
             newProducts.push(...normalizedProducts);
-            consecutiveOldPages = 0;
           } else {
             this.log(`Page ${page}: No new products (all ${data.products.length} already synced)`);
-            consecutiveOldPages++;
           }
           
-          // Stop if we've seen 2 consecutive pages with no new products
-          // This means we've likely passed the "new" section
-          if (consecutiveOldPages >= 2) {
-            this.log('No new products in last 2 pages, stopping early', 'info');
+          // Continue to next page - check ALL pages since Shopify doesn't guarantee order
+          page++;
+          await this.delay();
+          
+          // Safety limit
+          if (page > 50) {
+            this.log('Reached 50 pages safety limit', 'warning');
             hasMore = false;
-          } else {
-            page++;
-            await this.delay();
-            
-            // Safety limit
-            if (page > 20) {
-              this.log('Reached 20 pages safety limit', 'warning');
-              hasMore = false;
-            }
           }
         } else {
           hasMore = false;
