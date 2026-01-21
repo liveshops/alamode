@@ -16,7 +16,9 @@
         "NSCameraUsageDescription": "Allow cherry to access your camera to update your profile picture.",
         "NSPhotoLibraryUsageDescription": "Allow cherry to access your photo library to update your profile picture.",
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -61,7 +63,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#000000"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
