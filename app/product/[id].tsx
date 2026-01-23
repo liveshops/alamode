@@ -8,16 +8,16 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  Linking,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    Linking,
+    Pressable,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -176,9 +176,11 @@ export default function ProductDetailScreen() {
     if (!product) return;
 
     try {
+      // Use web URL that will try to deep link to app, with fallback to product info
+      const shareUrl = `https://shopcherry.co/product/${product.id}`;
       await Share.share({
-        message: `Check out ${product.name} from ${product.brand.name}!\n${product.product_url}`,
-        url: product.product_url,
+        message: `Check out ${product.name} from ${product.brand.name}!\n${shareUrl}`,
+        url: shareUrl,
       });
     } catch (err) {
       console.error('Error sharing:', err);

@@ -49,3 +49,5 @@ app-example
 
 # archived documentation
 /archive_docs
+credentials.json
+credentials/

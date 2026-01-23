@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View in Cherry App</title>
+    <link rel="icon" type="image/png" href="../images/favicon.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+        }
+        
+        .app-name {
+            font-size: 36px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            margin-bottom: 40px;
+            color: #000;
+        }
+        
+        .title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #000;
+        }
+        
+        .subtitle {
+            font-size: 15px;
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+        
+        .open-app-btn {
+            display: inline-block;
+            width: 100%;
+            max-width: 300px;
+            height: 50px;
+            line-height: 50px;
+            background-color: #000;
+            color: #fff;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            cursor: pointer;
+            margin-bottom: 16px;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+        
+        .open-app-btn:hover {
+            background-color: #333;
+        }
+        
+        .store-links {
+            margin-top: 30px;
+        }
+        
+        .store-link {
+            display: inline-block;
+            margin: 0 8px;
+        }
+        
+        .store-link img {
+            height: 44px;
+        }
+        
+        .loading {
+            color: #666;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ccc;
+            border-top-color: #000;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="../images/logo.png" alt="Cherry" class="logo">
+        <h1 class="app-name">Cherry</h1>
+        
+        <div id="loading-state">
+            <p class="loading">
+                <span class="spinner"></span>
+                Opening Cherry app...
+            </p>
+        </div>
+        
+        <div id="fallback-state" class="hidden">
+            <h2 class="title">View This Product</h2>
+            <p class="subtitle">Open in the Cherry app to see this product and discover more fashion finds.</p>
+            
+            <a href="#" id="open-app-btn" class="open-app-btn">OPEN IN APP</a>
+            
+            <div class="store-links">
+                <p style="color: #666; margin-bottom: 16px; font-size: 14px;">Don't have the app?</p>
+                <a href="https://apps.apple.com/app/cherry/id123456789" class="store-link">
+                    <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on App Store">
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get product ID from URL path
+        const pathParts = window.location.pathname.split('/');
+        const productId = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+        
+        // Deep link URL
+        const deepLink = `cherry://product/${productId}`;
+        
+        // Try to open the app
+        function tryOpenApp() {
+            // Create hidden iframe to try deep link (less disruptive than window.location)
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = deepLink;
+            document.body.appendChild(iframe);
+            
+            // Also try window.location as backup
+            setTimeout(() => {
+                window.location.href = deepLink;
+            }, 100);
+            
+            // Show fallback after timeout
+            setTimeout(() => {
+                document.getElementById('loading-state').classList.add('hidden');
+                document.getElementById('fallback-state').classList.remove('hidden');
+            }, 2000);
+        }
+        
+        // Set up the manual open button
+        document.getElementById('open-app-btn').href = deepLink;
+        document.getElementById('open-app-btn').addEventListener('click', function(e) {
+            e.preventDefault();
+            window.location.href = deepLink;
+        });
+        
+        // Try to open app on page load
+        tryOpenApp();
+    </script>
+</body>
+</html>

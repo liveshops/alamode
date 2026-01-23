@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.shopalamode.app",
+      "sha256_cert_fingerprints": ["FF:BA:24:30:09:A3:67:2F:C3:0F:D6:A9:01:76:55:00:76:63:F5:A3:06:DA:09:F4:FB:94:15:93:62:9D:92:34"]
+    }
+  }
+]

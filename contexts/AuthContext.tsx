@@ -206,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Redirect to web page for password reset
       // The web page will handle the reset and then deep link back to the app
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'https://theshumwayshow.com/password-reset-page.html',
+        redirectTo: 'https://shopcherry.co/reset-password.html',
       });
       return { error };
     } catch (error) {

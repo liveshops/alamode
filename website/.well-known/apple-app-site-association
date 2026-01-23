@@ -1,0 +1,20 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.shopalamode.app"],
+        "components": [
+          {
+            "/": "/product/*",
+            "comment": "Open product pages in app"
+          },
+          {
+            "/": "/reset-password*",
+            "comment": "Handle password reset"
+          }
+        ]
+      }
+    ]
+  }
+}
