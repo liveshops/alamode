@@ -8,6 +8,13 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "development-simulator": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
+    },
     "preview": {
       "distribution": "internal"
     },
@@ -15,11 +22,17 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://oeztavlkbkxhcpjkdxry.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lenRhdmxrYmt4aGNwamtkeHJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTgwNTQsImV4cCI6MjA4MDE5NDA1NH0.v2SpNPP-GMTRUbE71Q8fLY-83CyKyAD6yaItyg17v6Q"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lenRhdmxrYmt4aGNwamtkeHJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MTgwNTQsImV4cCI6MjA4MDE5NDA1NH0.v2SpNPP-GMTRUbE71Q8fLY-83CyKyAD6yaItyg17v6Q",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "389553112680-kpjb70cc5q7lhje2949cjc42m2j81eep.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "389553112680-0ac8c93a95ppfq77048l51c4chafdvoq.apps.googleusercontent.com"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6756148815"
+      }
+    }
   }
 }

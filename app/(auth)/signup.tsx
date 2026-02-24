@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -22,7 +23,8 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signUp } = useAuth();
+  const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
+  const { signUp, signInWithGoogle, signInWithApple } = useAuth();
 
   const handleSignUp = async () => {
     if (!name || !username || !email || !password || !confirmPassword) {
@@ -68,6 +70,34 @@ export default function SignUpScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setSocialLoading('google');
+    const { error } = await signInWithGoogle();
+    setSocialLoading(null);
+    if (error) {
+      if (error.message !== 'Sign in was cancelled') {
+        Alert.alert('Google Sign In Failed', error.message);
+      }
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setSocialLoading('apple');
+    const { error } = await signInWithApple();
+    setSocialLoading(null);
+    if (error) {
+      if (error.message !== 'Sign in was cancelled') {
+        Alert.alert('Apple Sign In Failed', error.message);
+      }
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
+  const isDisabled = loading || socialLoading !== null;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -88,7 +118,7 @@ export default function SignUpScreen() {
             onChangeText={setName}
             autoCapitalize="words"
             autoComplete="name"
-            editable={!loading}
+            editable={!isDisabled}
           />
 
           <TextInput
@@ -99,7 +129,7 @@ export default function SignUpScreen() {
             onChangeText={(text) => setUsername(text.toLowerCase())}
             autoCapitalize="none"
             autoComplete="username"
-            editable={!loading}
+            editable={!isDisabled}
           />
 
           <TextInput
@@ -111,7 +141,7 @@ export default function SignUpScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
-            editable={!loading}
+            editable={!isDisabled}
           />
 
           <TextInput
@@ -123,7 +153,7 @@ export default function SignUpScreen() {
             secureTextEntry
             autoCapitalize="none"
             autoComplete="password"
-            editable={!loading}
+            editable={!isDisabled}
           />
 
           <TextInput
@@ -135,7 +165,7 @@ export default function SignUpScreen() {
             secureTextEntry
             autoCapitalize="none"
             autoComplete="password"
-            editable={!loading}
+            editable={!isDisabled}
           />
 
           <TextInput
@@ -146,7 +176,7 @@ export default function SignUpScreen() {
             onChangeText={setPhoneNumber}
             keyboardType="phone-pad"
             autoComplete="tel"
-            editable={!loading}
+            editable={!isDisabled}
           />
         </View>
 
@@ -154,7 +184,7 @@ export default function SignUpScreen() {
         <TouchableOpacity
           style={styles.signUpButton}
           onPress={handleSignUp}
-          disabled={loading}>
+          disabled={isDisabled}>
           {loading ? (
             <ActivityIndicator color="#000" />
           ) : (
@@ -162,8 +192,46 @@ export default function SignUpScreen() {
           )}
         </TouchableOpacity>
 
+        {/* Divider */}
+        <View style={styles.dividerContainer}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        {/* Social Login Buttons */}
+        <TouchableOpacity
+          style={styles.socialButton}
+          onPress={handleGoogleSignIn}
+          disabled={isDisabled}>
+          {socialLoading === 'google' ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <View style={styles.socialButtonContent}>
+              <Ionicons name="logo-google" size={18} color="#000" />
+              <Text style={styles.socialButtonText}>Continue with Google</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={[styles.socialButton, styles.appleSocialButton]}
+            onPress={handleAppleSignIn}
+            disabled={isDisabled}>
+            {socialLoading === 'apple' ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <View style={styles.socialButtonContent}>
+                <Ionicons name="logo-apple" size={20} color="#fff" />
+                <Text style={[styles.socialButtonText, styles.appleButtonText]}>Continue with Apple</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+
         {/* Cancel */}
-        <TouchableOpacity onPress={() => router.back()} disabled={loading}>
+        <TouchableOpacity onPress={() => router.back()} disabled={isDisabled} style={styles.cancelButton}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -216,9 +284,52 @@ const styles = StyleSheet.create({
     color: '#000',
     letterSpacing: 1,
   },
+  cancelButton: {
+    marginTop: 8,
+  },
   cancelText: {
     textAlign: 'center',
     fontSize: 15,
     color: '#007AFF',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#ccc',
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: '#999',
+  },
+  socialButton: {
+    height: 50,
+    borderWidth: 1,
+    borderColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+  },
+  appleSocialButton: {
+    backgroundColor: '#000',
+  },
+  socialButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  socialButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000',
+  },
+  appleButtonText: {
+    color: '#fff',
   },
 });

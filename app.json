@@ -12,7 +12,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.shopalamode.app",
       "buildNumber": "2",
-      "associatedDomains": ["applinks:shopcherry.co"],
+      "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:shopcherry.co"
+      ],
       "infoPlist": {
         "NSCameraUsageDescription": "Allow cherry to access your camera to update your profile picture.",
         "NSPhotoLibraryUsageDescription": "Allow cherry to access your photo library to update your profile picture.",
@@ -36,7 +39,10 @@
               "pathPrefix": "/product"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "adaptiveIcon": {
@@ -79,7 +85,14 @@
           "color": "#000000"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.389553112680-0ac8c93a95ppfq77048l51c4chafdvoq"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

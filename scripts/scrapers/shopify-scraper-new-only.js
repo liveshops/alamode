@@ -117,11 +117,7 @@ class ShopifyScraperNewOnly extends BaseScraperNewOnly {
           page++;
           await this.delay();
           
-          // Safety limit
-          if (page > 50) {
-            this.log('Reached 50 pages safety limit', 'warning');
-            hasMore = false;
-          }
+
         } else {
           hasMore = false;
         }
