@@ -7,6 +7,10 @@
 
 const CLOUDINARY_CLOUD_NAME = 'dihoddmmi';
 
+// Standard sizes for different contexts
+export const IMAGE_SIZE_FEED = 800;      // Product cards in 2-column grid (~190pt × 3x retina)
+export const IMAGE_SIZE_DETAIL = 1200;   // Full-width product detail page
+
 /**
  * Get an optimized image URL for the given original URL
  * 
@@ -17,7 +21,7 @@ const CLOUDINARY_CLOUD_NAME = 'dihoddmmi';
  */
 export function getOptimizedImageUrl(
   originalUrl: string | undefined | null,
-  width: number = 400,
+  width: number = IMAGE_SIZE_FEED,
   quality: number = 80
 ): string {
   if (!originalUrl) return '';
@@ -76,8 +80,8 @@ function getCloudinaryFetchUrl(url: string, width: number, quality: number): str
  */
 export function getImageSrcSet(originalUrl: string): { small: string; medium: string; large: string } {
   return {
-    small: getOptimizedImageUrl(originalUrl, 200, 75),
-    medium: getOptimizedImageUrl(originalUrl, 400, 80),
-    large: getOptimizedImageUrl(originalUrl, 800, 85),
+    small: getOptimizedImageUrl(originalUrl, 400, 75),
+    medium: getOptimizedImageUrl(originalUrl, IMAGE_SIZE_FEED, 80),
+    large: getOptimizedImageUrl(originalUrl, IMAGE_SIZE_DETAIL, 85),
   };
 }

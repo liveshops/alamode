@@ -3,6 +3,7 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHomeRefresh } from '@/contexts/HomeRefreshContext';
 import { useRecommendations } from '@/hooks/useRecommendations';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -128,7 +129,7 @@ export default function HomeScreen() {
       const product = products[i];
       if (product?.image_url && !prefetchedUrls.current.has(product.image_url)) {
         prefetchedUrls.current.add(product.image_url);
-        Image.prefetch(product.image_url);
+        Image.prefetch(getOptimizedImageUrl(product.image_url));
       }
     }
   }, [products]);

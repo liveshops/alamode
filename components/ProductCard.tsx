@@ -1,4 +1,5 @@
 import { Product } from '@/hooks/useProducts';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -49,7 +50,9 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
   
   // Memoize expensive calculations
   const allImages = useMemo(() => 
-    [product.image_url, ...(product.additional_images || [])].filter(Boolean),
+    [product.image_url, ...(product.additional_images || [])]
+      .filter(Boolean)
+      .map(url => getOptimizedImageUrl(url)),
     [product.image_url, product.additional_images]
   );
   
@@ -286,6 +289,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 4,
+    marginBottom: 12,
   },
   originalPrice: {
     fontSize: 12,

@@ -5,6 +5,7 @@ import { UserCard } from '@/components/UserCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { RecommendedProduct } from '@/hooks/useRecommendations';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { buildSearchFilter } from '@/utils/searchUtils';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -110,7 +111,7 @@ export default function SearchScreen() {
       const product = productList[i];
       if (product?.image_url && !prefetchedUrls.current.has(product.image_url)) {
         prefetchedUrls.current.add(product.image_url);
-        Image.prefetch(product.image_url);
+        Image.prefetch(getOptimizedImageUrl(product.image_url));
       }
     }
   }, []);

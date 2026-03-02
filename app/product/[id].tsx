@@ -2,22 +2,23 @@ import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { useSimilarProducts } from '@/hooks/useRecommendations';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Dimensions,
-    Linking,
-    Pressable,
-    ScrollView,
-    Share,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  Linking,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -74,9 +75,10 @@ export default function ProductDetailScreen() {
     }
   };
 
-  // Combine main image with additional images
+  // Combine main image with additional images (full resolution for detail view)
   const allImages = product
     ? [product.image_url, ...(product.additional_images || [])]
+        .filter(Boolean)
     : [];
 
   const fetchProduct = useCallback(async () => {
@@ -378,7 +380,7 @@ export default function ProductDetailScreen() {
                     activeOpacity={0.8}>
                     <View style={styles.similarImageContainer}>
                       <Image 
-                        source={{ uri: item.image_url }} 
+                        source={{ uri: getOptimizedImageUrl(item.image_url) }} 
                         style={styles.similarImage} 
                         contentFit="cover" 
                       />

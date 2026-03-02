@@ -5,7 +5,7 @@ import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -28,6 +28,8 @@ interface Brand {
   follower_count: number;
 }
 
+const PAGE_SIZE = 40;
+
 export default function BrandProfileScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
@@ -36,32 +38,33 @@ export default function BrandProfileScreen() {
 
   const [brand, setBrand] = useState<Brand | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [totalProductCount, setTotalProductCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'popular'>('popular');
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const scrollPositionRef = useRef(0);
-  const shouldRestoreScroll = useRef(false);
   const hasLoadedRef = useRef(false);
   const loadedSlugRef = useRef<string | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      // Only fetch if we haven't loaded data for this slug yet
       const needsFetch = !hasLoadedRef.current || loadedSlugRef.current !== slug;
       
       if (needsFetch) {
         hasLoadedRef.current = true;
         loadedSlugRef.current = slug;
-        fetchBrandData();
+        fetchBrandInfo();
       } else if (scrollPositionRef.current > 0) {
-        // Returning from product view - just restore scroll position
         setTimeout(() => {
           flatListRef.current?.scrollToOffset({
             offset: scrollPositionRef.current,
@@ -72,7 +75,8 @@ export default function BrandProfileScreen() {
     }, [slug, user])
   );
 
-  const fetchBrandData = async () => {
+  // Fetch brand info + first page of products
+  const fetchBrandInfo = async () => {
     if (!slug) return;
 
     try {
@@ -87,160 +91,139 @@ export default function BrandProfileScreen() {
         .single();
 
       if (brandError) throw brandError;
-
       setBrand(brandData);
 
-      // Check if user follows this brand
-      if (user) {
-        const { data: followData } = await supabase
-          .from('user_follows_brands')
-          .select('brand_id')
-          .eq('user_id', user.id)
-          .eq('brand_id', brandData.id)
-          .maybeSingle();
-
-        setIsFollowing(!!followData);
-      }
-
-      // Fetch ALL brand products using pagination (Supabase caps at 1000/query)
-      console.log(`[BRAND] Fetching all products for brand: ${brandData.name} (ID: ${brandData.id})`);
-      
-      let allProducts: any[] = [];
-      let currentOffset = 0;
-      const batchSize = 1000;
-      let hasMore = true;
-      
-      while (hasMore) {
-        const { data: batchData, error: batchError } = await supabase
+      // Get total product count and check follow status in parallel
+      const [countResult, followResult] = await Promise.all([
+        supabase
           .from('products')
-          .select(
-            `
-            *,
-            brand:brands(id, name, slug, logo_url)
-          `
-          )
+          .select('id', { count: 'exact', head: true })
           .eq('brand_id', brandData.id)
-          .eq('is_available', true)
-          .order('created_at', { ascending: false })
-          .range(currentOffset, currentOffset + batchSize - 1);
+          .eq('is_available', true),
+        user
+          ? supabase
+              .from('user_follows_brands')
+              .select('brand_id')
+              .eq('user_id', user.id)
+              .eq('brand_id', brandData.id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
 
-        if (batchError) {
-          console.error('[BRAND] Products query error:', batchError);
-          throw batchError;
-        }
+      setTotalProductCount(countResult.count || 0);
+      setIsFollowing(!!followResult.data);
 
-        if (batchData && batchData.length > 0) {
-          allProducts = [...allProducts, ...batchData];
-          console.log(`[BRAND] Batch ${Math.floor(currentOffset / batchSize) + 1}: ${batchData.length} products (total: ${allProducts.length})`);
-          
-          // If we got less than batchSize, we're done
-          hasMore = batchData.length === batchSize;
-          currentOffset += batchSize;
-        } else {
-          hasMore = false;
-        }
-      }
-      
-      console.log(`[BRAND] Final result: ${allProducts.length} total products for ${brandData.name}`);
-      const productsData = allProducts;
-
-      // Check which products are liked
-      if (user) {
-        const { data: likedProducts } = await supabase
-          .from('user_likes_products')
-          .select('product_id')
-          .eq('user_id', user.id);
-
-        const likedProductIds = new Set(likedProducts?.map((lp) => lp.product_id) || []);
-
-        const productsWithLikes = (productsData || []).map((product) => ({
-          ...product,
-          is_liked: likedProductIds.has(product.id),
-        }));
-
-        setProducts(productsWithLikes);
-        // Apply existing search and sort filters
-        let filtered = productsWithLikes;
-        if (searchQuery.trim()) {
-          filtered = filtered.filter((p: Product) =>
-            p.name.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-        }
-        // Sort by current sortBy (default is 'newest' which matches the API order)
-        if (sortBy === 'popular') {
-          filtered = [...filtered].sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
-        }
-        setFilteredProducts(filtered);
-      } else {
-        const allProducts = productsData || [];
-        setProducts(allProducts);
-        // Apply existing search and sort filters
-        let filtered = allProducts;
-        if (searchQuery.trim()) {
-          filtered = filtered.filter((p: Product) =>
-            p.name.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-        }
-        // Sort by current sortBy (default is 'newest' which matches the API order)
-        if (sortBy === 'popular') {
-          filtered = [...filtered].sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
-        }
-        setFilteredProducts(filtered);
-      }
+      // Fetch first page of products
+      await fetchProducts(brandData.id, sortBy, '', 0, true);
     } catch (err) {
       console.error('Error fetching brand:', err);
       setError(err instanceof Error ? err.message : 'Failed to load brand');
     } finally {
       setLoading(false);
-      // Restore scroll after data loads
-      if (shouldRestoreScroll.current) {
-        setTimeout(() => {
-          flatListRef.current?.scrollToOffset({
-            offset: scrollPositionRef.current,
-            animated: false,
-          });
-          shouldRestoreScroll.current = false;
-        }, 300);
-      }
+    }
+  };
+
+  // Fetch a page of products with server-side sort, search, and like status
+  const fetchProducts = async (
+    brandId: string,
+    sort: 'newest' | 'popular',
+    search: string,
+    offset: number,
+    reset: boolean
+  ) => {
+    let query = supabase
+      .from('products')
+      .select(`
+        id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
+        brand:brands(id, name, slug, logo_url)
+      `)
+      .eq('brand_id', brandId)
+      .eq('is_available', true);
+
+    // Server-side search
+    if (search.trim()) {
+      query = query.ilike('name', `%${search.trim()}%`);
+    }
+
+    // Server-side sort
+    if (sort === 'popular') {
+      query = query.order('like_count', { ascending: false }).order('created_at', { ascending: false });
+    } else {
+      query = query.order('created_at', { ascending: false });
+    }
+
+    const { data: productsData, error: productsError } = await query
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (productsError) throw productsError;
+
+    let productsWithLikes = productsData || [];
+
+    // Check likes only for this page of products
+    if (user && productsWithLikes.length > 0) {
+      const productIds = productsWithLikes.map(p => p.id);
+      const { data: likedData } = await supabase
+        .from('user_likes_products')
+        .select('product_id')
+        .eq('user_id', user.id)
+        .in('product_id', productIds);
+
+      const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+      productsWithLikes = productsWithLikes.map(p => ({
+        ...p,
+        is_liked: likedIds.has(p.id),
+      }));
+    }
+
+    if (reset) {
+      setProducts(productsWithLikes as unknown as Product[]);
+    } else {
+      setProducts(prev => {
+        const existingIds = new Set(prev.map(p => p.id));
+        const newProducts = productsWithLikes.filter(p => !existingIds.has(p.id));
+        return [...prev, ...newProducts] as unknown as Product[];
+      });
+    }
+    setHasMore(productsWithLikes.length >= PAGE_SIZE);
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !brand) return;
+    setLoadingMore(true);
+    try {
+      await fetchProducts(brand.id, sortBy, debouncedSearch, products.length, false);
+    } catch (err) {
+      console.error('Error loading more products:', err);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
   const onRefresh = async () => {
+    if (!brand) return;
     setRefreshing(true);
-    await fetchBrandData();
+    await fetchProducts(brand.id, sortBy, debouncedSearch, 0, true);
     setRefreshing(false);
-  };
-
-  // Helper to sort products
-  const sortProducts = (productsToSort: Product[], sort: 'newest' | 'popular') => {
-    return [...productsToSort].sort((a, b) => {
-      if (sort === 'popular') {
-        return (b.like_count || 0) - (a.like_count || 0);
-      }
-      // newest - sort by created_at descending
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-  };
-
-  // Apply search and sort filters
-  const applyFilters = (allProducts: Product[], query: string, sort: 'newest' | 'popular') => {
-    let result = allProducts;
-    if (query.trim() !== '') {
-      result = result.filter((p) =>
-        p.name.toLowerCase().includes(query.toLowerCase())
-      );
-    }
-    return sortProducts(result, sort);
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    setFilteredProducts(applyFilters(products, query, sortBy));
+    // Debounce search to avoid firing on every keystroke
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(query);
+    }, 400);
   };
 
+  // Re-fetch when sort or debounced search changes
   const handleSortChange = (sort: 'newest' | 'popular') => {
+    if (sort === sortBy) return;
     setSortBy(sort);
-    setFilteredProducts(applyFilters(products, searchQuery, sort));
+    if (brand) {
+      setLoading(true);
+      fetchProducts(brand.id, sort, debouncedSearch, 0, true).finally(() => setLoading(false));
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
   };
 
   const handleToggleFollow = async () => {
@@ -291,6 +274,13 @@ export default function BrandProfileScreen() {
     }
   };
 
+  // Re-fetch when debounced search changes
+  useEffect(() => {
+    if (brand && hasLoadedRef.current) {
+      fetchProducts(brand.id, sortBy, debouncedSearch, 0, true);
+    }
+  }, [debouncedSearch]);
+
   const handleProductPress = (productId: string) => {
     router.push(`/product/${productId}`);
   };
@@ -303,7 +293,7 @@ export default function BrandProfileScreen() {
 
     const wasLiked = product.is_liked;
 
-    // Optimistic update - update both products and filteredProducts
+    // Optimistic update
     const updateProducts = (prev: Product[]) =>
       prev.map((p) =>
         p.id === productId
@@ -316,7 +306,6 @@ export default function BrandProfileScreen() {
       );
 
     setProducts(updateProducts);
-    setFilteredProducts(updateProducts);
 
     try {
       if (wasLiked) {
@@ -337,7 +326,7 @@ export default function BrandProfileScreen() {
       }
     } catch (err) {
       console.error('Error toggling like:', err);
-      // Revert on error - update both products and filteredProducts
+      // Revert on error
       const revertProducts = (prev: Product[]) =>
         prev.map((p) =>
           p.id === productId
@@ -350,7 +339,6 @@ export default function BrandProfileScreen() {
         );
 
       setProducts(revertProducts);
-      setFilteredProducts(revertProducts);
     }
   };
 
@@ -388,7 +376,7 @@ export default function BrandProfileScreen() {
 
       <FlatList
         ref={flatListRef}
-        data={filteredProducts}
+        data={products}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
@@ -398,6 +386,13 @@ export default function BrandProfileScreen() {
           scrollPositionRef.current = e.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
+        initialNumToRender={10}
+        updateCellsBatchingPeriod={50}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
         }
@@ -422,7 +417,7 @@ export default function BrandProfileScreen() {
                 <Text style={styles.statLabel}>Followers</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{products.length}</Text>
+                <Text style={styles.statNumber}>{totalProductCount}</Text>
                 <Text style={styles.statLabel}>Products</Text>
               </View>
             </View>
@@ -477,10 +472,21 @@ export default function BrandProfileScreen() {
             </View>
           </View>
         }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color="#000" />
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No products yet</Text>
-          </View>
+          !loading ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                {debouncedSearch ? 'No products match your search' : 'No products yet'}
+              </Text>
+            </View>
+          ) : null
         }
         renderItem={({ item }) => (
           <View style={styles.cardWrapper}>
@@ -683,5 +689,9 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#666',
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });
