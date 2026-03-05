@@ -6,13 +6,13 @@ import { supabase } from '@/utils/supabase';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,6 +30,8 @@ interface BrandWithProducts extends Brand {
 
 type TabType = 'products' | 'brands';
 
+const PAGE_SIZE = 40;
+
 export default function FavoritesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -39,139 +41,174 @@ export default function FavoritesScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [brands, setBrands] = useState<BrandWithProducts[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const productsListRef = useRef<FlatList>(null);
   const brandsListRef = useRef<FlatList>(null);
   const productsScrollRef = useRef(0);
   const brandsScrollRef = useRef(0);
-  const shouldRestoreProductsScroll = useRef(false);
-  const shouldRestoreBrandsScroll = useRef(false);
+  const productsLoadedRef = useRef(false);
+  const brandsLoadedRef = useRef(false);
 
+  // Only fetch on first focus or when user changes — not on every tab switch back
   useFocusEffect(
     useCallback(() => {
-      if (activeTab === 'products') {
-        shouldRestoreProductsScroll.current = productsScrollRef.current > 0;
-      } else {
-        shouldRestoreBrandsScroll.current = brandsScrollRef.current > 0;
+      if (!user) {
+        setProducts([]);
+        setBrands([]);
+        setLoading(false);
+        return;
       }
-      fetchData();
+
+      if (activeTab === 'products') {
+        if (!productsLoadedRef.current) {
+          fetchProducts(true);
+        } else if (productsScrollRef.current > 0) {
+          setTimeout(() => {
+            productsListRef.current?.scrollToOffset({ offset: productsScrollRef.current, animated: false });
+          }, 50);
+        }
+      } else {
+        if (!brandsLoadedRef.current) {
+          fetchBrands();
+        } else if (brandsScrollRef.current > 0) {
+          setTimeout(() => {
+            brandsListRef.current?.scrollToOffset({ offset: brandsScrollRef.current, animated: false });
+          }, 50);
+        }
+      }
     }, [user, activeTab])
   );
 
-  const fetchData = async () => {
-    if (!user) {
-      setProducts([]);
-      setBrands([]);
-      setLoading(false);
-      return;
-    }
-
+  // Fetch liked products with pagination
+  const fetchProducts = async (reset: boolean) => {
+    if (!user) return;
     try {
-      setLoading(true);
+      if (reset) setLoading(true);
+      const offset = reset ? 0 : products.length;
 
-      // Use optimized database function for liked products
-      const { data: likedProductsData, error: productsError } = await supabase
-        .rpc('get_user_liked_products', {
-          p_user_id: user.id,
-          p_limit: 100,
-          p_offset: 0
-        });
+      const { data, error } = await supabase.rpc('get_user_liked_products', {
+        p_user_id: user.id,
+        p_limit: PAGE_SIZE,
+        p_offset: offset,
+      });
 
-      if (productsError) throw productsError;
+      if (error) throw error;
 
-      const productsWithLiked = (likedProductsData || []).map((product: any) => ({
-        ...product,
-        brand: {
-          id: product.brand_id,
-          name: product.brand_name,
-          slug: product.brand_slug,
-          logo_url: product.brand_logo_url,
-        },
+      const mapped = (data || []).map((p: any) => ({
+        ...p,
+        brand: { id: p.brand_id, name: p.brand_name, slug: p.brand_slug, logo_url: p.brand_logo_url },
         is_liked: true,
       }));
 
-      setProducts(productsWithLiked);
+      if (reset) {
+        setProducts(mapped);
+      } else {
+        setProducts(prev => [...prev, ...mapped]);
+      }
+      setHasMoreProducts(mapped.length >= PAGE_SIZE);
+      productsLoadedRef.current = true;
+    } catch (err) {
+      console.error('Error fetching liked products:', err);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
 
-      // Fetch followed brands with their products
-      const { data: followedBrandsData, error: brandsError } = await supabase
+  // Fetch followed brands with products — batched (3 queries total instead of 2*N)
+  const fetchBrands = async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+
+      // 1. Get followed brands (one query)
+      const { data: followedData, error: followError } = await supabase
         .from('user_follows_brands')
-        .select(
-          `
-          brand_id,
-          brands (*)
-        `
-        )
+        .select('brand_id, brands(*)')
         .eq('user_id', user.id)
         .order('followed_at', { ascending: false });
 
-      if (brandsError) throw brandsError;
+      if (followError) throw followError;
+      if (!followedData || followedData.length === 0) {
+        setBrands([]);
+        brandsLoadedRef.current = true;
+        setLoading(false);
+        return;
+      }
 
-      // Fetch products for each followed brand
-      const brandsWithProducts: BrandWithProducts[] = [];
-      for (const item of followedBrandsData || []) {
-        const brand = item.brands;
-        if (!brand) continue;
+      const brandIds = followedData.map(f => f.brand_id);
 
-        const { data: productsData } = await supabase
-          .from('products')
-          .select(`
-            id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at,
-            brand:brands(id, name, slug, logo_url)
-          `)
-          .eq('brand_id', brand.id)
-          .eq('is_available', true)
-          .order('created_at', { ascending: false })
-          .limit(10);
+      // 2. Batch fetch latest 10 products per brand (one query)
+      const { data: allProducts, error: prodError } = await supabase
+        .from('products')
+        .select(`
+          id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at, brand_id,
+          brand:brands(id, name, slug, logo_url)
+        `)
+        .in('brand_id', brandIds)
+        .eq('is_available', true)
+        .order('created_at', { ascending: false });
 
-        let products = productsData || [];
-        if (products.length > 0) {
-          const { data: likedData } = await supabase
-            .from('user_likes_products')
-            .select('product_id')
-            .eq('user_id', user.id)
-            .in('product_id', products.map(p => p.id));
+      if (prodError) throw prodError;
 
-          const likedIds = new Set(likedData?.map(l => l.product_id) || []);
-          products = products.map(p => ({ ...p, is_liked: likedIds.has(p.id) }));
-        }
+      // 3. Batch check likes for all products (one query)
+      const productIds = (allProducts || []).map(p => p.id);
+      let likedIds = new Set<string>();
+      if (productIds.length > 0) {
+        const { data: likedData } = await supabase
+          .from('user_likes_products')
+          .select('product_id')
+          .eq('user_id', user.id)
+          .in('product_id', productIds);
+        likedIds = new Set(likedData?.map(l => l.product_id) || []);
+      }
 
-        // Only include brands that have products
-        if (products.length > 0) {
-          brandsWithProducts.push({
-            ...brand,
-            products,
-          });
+      // Group products by brand (max 10 per brand), add like status
+      const productsByBrand = new Map<string, any[]>();
+      for (const p of allProducts || []) {
+        const bid = p.brand_id;
+        if (!productsByBrand.has(bid)) productsByBrand.set(bid, []);
+        const list = productsByBrand.get(bid)!;
+        if (list.length < 10) {
+          list.push({ ...p, is_liked: likedIds.has(p.id) });
         }
       }
 
-      setBrands(brandsWithProducts);
+      // Build brands list preserving follow order
+      const result: BrandWithProducts[] = [];
+      for (const item of followedData) {
+        const brand = item.brands as any;
+        if (!brand) continue;
+        const prods = productsByBrand.get(brand.id) || [];
+        if (prods.length > 0) {
+          result.push({ ...brand, products: prods });
+        }
+      }
+
+      setBrands(result);
+      brandsLoadedRef.current = true;
     } catch (err) {
-      console.error('Error fetching favorites:', err);
+      console.error('Error fetching followed brands:', err);
     } finally {
       setLoading(false);
-      // Restore scroll after data loads
-      setTimeout(() => {
-        if (shouldRestoreProductsScroll.current) {
-          productsListRef.current?.scrollToOffset({
-            offset: productsScrollRef.current,
-            animated: false,
-          });
-          shouldRestoreProductsScroll.current = false;
-        }
-        if (shouldRestoreBrandsScroll.current) {
-          brandsListRef.current?.scrollToOffset({
-            offset: brandsScrollRef.current,
-            animated: false,
-          });
-          shouldRestoreBrandsScroll.current = false;
-        }
-      }, 300);
     }
+  };
+
+  const loadMoreProducts = async () => {
+    if (loadingMore || !hasMoreProducts) return;
+    setLoadingMore(true);
+    await fetchProducts(false);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchData();
+    if (activeTab === 'products') {
+      await fetchProducts(true);
+    } else {
+      await fetchBrands();
+    }
     setRefreshing(false);
   };
 
@@ -326,16 +363,31 @@ export default function FavoritesScreen() {
         productsScrollRef.current = e.nativeEvent.contentOffset.y;
       }}
       scrollEventThrottle={16}
+      onEndReached={loadMoreProducts}
+      onEndReachedThreshold={0.5}
+      maxToRenderPerBatch={10}
+      windowSize={5}
+      removeClippedSubviews={true}
+      initialNumToRender={10}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#000" />
       }
+      ListFooterComponent={
+        loadingMore ? (
+          <View style={styles.footerLoader}>
+            <ActivityIndicator size="small" color="#000" />
+          </View>
+        ) : null
+      }
       ListEmptyComponent={
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No liked products yet</Text>
-          <Text style={styles.emptySubtext}>
-            Products you heart will appear here
-          </Text>
-        </View>
+        !loading ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No liked products yet</Text>
+            <Text style={styles.emptySubtext}>
+              Products you heart will appear here
+            </Text>
+          </View>
+        ) : null
       }
       renderItem={({ item }) => (
         <HorizontalProductCard
@@ -490,5 +542,9 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: 14,
     color: '#666',
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

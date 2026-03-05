@@ -1,4 +1,5 @@
 import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
+import { ZoomableImage } from '@/components/ZoomableImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { useSimilarProducts } from '@/hooks/useRecommendations';
@@ -9,16 +10,16 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  Linking,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    Linking,
+    Pressable,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -275,13 +276,9 @@ export default function ProductDetailScreen() {
             scrollEventThrottle={16}>
             {allImages.map((imageUrl, index) => (
               <Pressable key={index} onLongPress={handleLongPress} delayLongPress={400}>
-                <Image
-                  source={{ uri: imageUrl }}
+                <ZoomableImage
+                  uri={imageUrl}
                   style={styles.productImage}
-                  contentFit="cover"
-                  transition={200}
-                  priority="high"
-                  cachePolicy="disk"
                 />
               </Pressable>
             ))}
@@ -450,6 +447,7 @@ export default function ProductDetailScreen() {
           <Text style={styles.buyButtonText}>Buy</Text>
         </TouchableOpacity>
       </View>
+
     </View>
   );
 }

@@ -487,7 +487,13 @@ async function syncBrandProducts(brandSlug) {
       const format = detectFormat(apifyProduct);
       
       if (format === 'unknown') {
-        console.log(`  ⚠️  Skipping product - unknown format`);
+        const keys = Object.keys(apifyProduct).join(', ');
+        const name = apifyProduct.name || apifyProduct.title || '(no name)';
+        console.log(`  ⚠️  Skipping product - unknown format: "${name}"`);
+        console.log(`      Keys: ${keys}`);
+        console.log(`      name value: ${JSON.stringify(apifyProduct.name)}`);
+        console.log(`      offers value: ${JSON.stringify(apifyProduct.offers)?.substring(0, 200)}`);
+        console.log(`      url: ${apifyProduct.url}`);
         productsFailed++;
         continue;
       }

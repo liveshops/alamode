@@ -31,7 +31,7 @@ function getRecencyBadge(createdAt: string | undefined): string | null {
   
   // 1-3 months
   const diffMonths = Math.floor(diffDays / 30);
-  if (diffMonths < 4) return `${diffMonths}m`;
+  if (diffMonths < 4) return `${diffMonths}mo`;
   
   // Older than 3 months - don't show badge
   return null;
