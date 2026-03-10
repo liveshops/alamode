@@ -70,8 +70,7 @@ export function ZoomableImage({ uri, style }: ZoomableImageProps) {
     });
 
   const pan = Gesture.Pan()
-    .minPointers(1)
-    .maxPointers(2)
+    .minPointers(2)
     .onUpdate((e) => {
       if (scale.value > 1) {
         translateX.value = savedTranslateX.value + e.translationX;
