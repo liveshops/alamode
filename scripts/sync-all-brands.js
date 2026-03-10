@@ -337,6 +337,26 @@ async function main() {
     
     console.log('\n' + '='.repeat(95) + '\n');
     
+    // Send notifications for brands that added new products
+    if (totalAdded > 0) {
+      console.log('📱 Sending brand notifications...');
+      try {
+        const { data: notifResult, error: notifError } = await supabase.rpc('trigger_brand_notifications_now', {
+          approach: 'daily'
+        });
+        if (notifError) {
+          console.error('⚠️  Notification error:', notifError.message);
+        } else if (notifResult && notifResult.length > 0) {
+          console.log(`✅ Sent notifications for ${notifResult[0].notifications_sent} brands (${notifResult[0].execution_time})`);
+        } else {
+          console.log('ℹ️  No pending notifications to send');
+        }
+      } catch (err) {
+        console.error('⚠️  Notification error:', err.message);
+      }
+      console.log('');
+    }
+    
     process.exit(0);
     
   } catch (error) {
