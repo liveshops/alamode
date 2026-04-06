@@ -14,7 +14,8 @@ CREATE OR REPLACE FUNCTION get_new_today_feed(
   p_user_id UUID,
   p_day_offset INT DEFAULT 0,
   p_limit INT DEFAULT 40,
-  p_offset INT DEFAULT 0
+  p_offset INT DEFAULT 0,
+  p_timezone TEXT DEFAULT 'UTC'
 )
 RETURNS TABLE (
   id UUID,
@@ -37,9 +38,18 @@ RETURNS TABLE (
 DECLARE
   v_day_start TIMESTAMPTZ;
   v_day_end TIMESTAMPTZ;
+  v_tz TEXT;
 BEGIN
-  -- Calculate day range (day_offset 0 = today, 1 = yesterday, etc.)
-  v_day_end := date_trunc('day', NOW() AT TIME ZONE 'UTC') - (p_day_offset * INTERVAL '1 day') + INTERVAL '1 day';
+  -- Validate timezone, fall back to UTC if invalid
+  BEGIN
+    PERFORM NOW() AT TIME ZONE p_timezone;
+    v_tz := p_timezone;
+  EXCEPTION WHEN OTHERS THEN
+    v_tz := 'UTC';
+  END;
+
+  -- Calculate day range in the user's local timezone
+  v_day_end := (date_trunc('day', NOW() AT TIME ZONE v_tz) - (p_day_offset * INTERVAL '1 day') + INTERVAL '1 day') AT TIME ZONE v_tz;
   v_day_start := v_day_end - INTERVAL '1 day';
 
   RETURN QUERY

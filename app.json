@@ -10,8 +10,8 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.shopalamode.app",
-      "buildNumber": "2",
+      "bundleIdentifier": "co.cherry.app",
+      "buildNumber": "1",
       "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:shopcherry.co"
@@ -26,7 +26,7 @@
       }
     },
     "android": {
-      "package": "com.shopalamode.app",
+      "package": "co.cherry.app",
       "versionCode": 1,
       "intentFilters": [
         {

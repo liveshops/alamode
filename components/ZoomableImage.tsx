@@ -69,24 +69,7 @@ export function ZoomableImage({ uri, style }: ZoomableImageProps) {
       }
     });
 
-  const pan = Gesture.Pan()
-    .minPointers(2)
-    .onUpdate((e) => {
-      if (scale.value > 1) {
-        translateX.value = savedTranslateX.value + e.translationX;
-        translateY.value = savedTranslateY.value + e.translationY;
-      }
-    })
-    .onEnd(() => {
-      if (scale.value <= 1.05) {
-        snapBack();
-      } else {
-        savedTranslateX.value = translateX.value;
-        savedTranslateY.value = translateY.value;
-      }
-    });
-
-  const composed = Gesture.Simultaneous(pinch, pan);
+  const composed = pinch;
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [

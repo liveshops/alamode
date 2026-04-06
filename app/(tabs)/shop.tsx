@@ -169,11 +169,14 @@ export default function NewTodayScreen() {
   ): Promise<Product[]> => {
     if (!user) return [];
 
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
+
     const { data, error } = await supabase.rpc('get_new_today_feed', {
       p_user_id: user.id,
       p_day_offset: dayOffset,
       p_limit: limit,
       p_offset: offset,
+      p_timezone: userTimezone,
     });
 
     if (error) throw error;

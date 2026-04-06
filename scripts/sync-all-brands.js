@@ -11,7 +11,7 @@
  *   node scripts/sync-all-brands.js --shopify-only  # Only sync Shopify brands (FREE!)
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 const { createClient } = require('@supabase/supabase-js');
 const ShopifyScraper = require('./scrapers/shopify-scraper');
 const { ZaraScraper, HTMLScraper } = require('./scrapers/custom-scrapers');
