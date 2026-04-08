@@ -69,7 +69,30 @@ export function ZoomableImage({ uri, style }: ZoomableImageProps) {
       }
     });
 
-  const composed = pinch;
+  const pan = Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesMove((e, state) => {
+      // Only activate pan when zoomed in — otherwise fail so carousel can swipe
+      if (savedScale.value > 1) {
+        state.activate();
+      } else {
+        state.fail();
+      }
+    })
+    .onUpdate((e) => {
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      if (scale.value <= 1.05) {
+        snapBack();
+      } else {
+        savedTranslateX.value = translateX.value;
+        savedTranslateY.value = translateY.value;
+      }
+    });
+
+  const composed = Gesture.Simultaneous(pinch, pan);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [

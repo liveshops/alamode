@@ -1,29 +1,34 @@
 import { AuthProvider } from '@/contexts/AuthContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { Stack } from 'expo-router';
-// Uncomment these imports after adding the font file:
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-// Uncomment after adding font file:
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  // Uncomment this section after adding AlbraDisplay-Light.ttf to assets/fonts/:
-  
   const [fontsLoaded, fontError] = useFonts({
     'Zodiak-Thin': require('../assets/fonts/Zodiak-Thin.ttf'),
     'AbrilFatface-Regular': require('../assets/fonts/AbrilFatface-Regular.ttf'),
   });
+  const [splashHidden, setSplashHidden] = useState(false);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().then(() => setSplashHidden(true));
     }
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) {
+  // Safety timeout: hide splash after 3s even if fonts haven't loaded
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().then(() => setSplashHidden(true));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!splashHidden && !fontsLoaded && !fontError) {
     return null;
   }
   

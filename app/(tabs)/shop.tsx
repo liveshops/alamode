@@ -504,8 +504,8 @@ export default function NewTodayScreen() {
       <FlatList
         ref={flatListRef}
         data={rowItems}
-        keyExtractor={(item, index) => 
-          item.type === 'section' ? `section-${item.dayOffset}` : `row-${item.products[0].id}`
+        keyExtractor={(item, index) =>
+          item.type === 'section' ? `section-${item.dayOffset}` : `row-${index}-${item.products[0].id}`
         }
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}

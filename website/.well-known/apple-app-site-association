@@ -3,7 +3,7 @@
     "apps": [],
     "details": [
       {
-        "appIDs": ["TEAMID.com.shopalamode.app"],
+        "appIDs": ["69a6de72-e2c6-47e3-e053-5b8c7c11a4d1.com.shopalamode.app"],
         "components": [
           {
             "/": "/product/*",

@@ -9,9 +9,11 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View, ViewToken } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { profile } = useAuth();
   const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike, markNotInterested } = useRecommendations(20);
   const [refreshing, setRefreshing] = useState(false);
@@ -180,7 +182,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={scrollToTopAndRefresh} activeOpacity={0.7}>
           <Text style={styles.appName}>cherry</Text>
         </TouchableOpacity>
@@ -262,7 +264,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   header: {
-    paddingTop: 60,
     paddingBottom: 20,
     paddingHorizontal: 16,
     backgroundColor: '#fff',
