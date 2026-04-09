@@ -2,6 +2,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 
@@ -34,6 +35,7 @@ export default function RootLayout() {
   
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <AuthProvider>
       <NotificationProvider>
         <Stack
@@ -74,5 +76,6 @@ export default function RootLayout() {
         </Stack>
       </NotificationProvider>
     </AuthProvider>
+    </GestureHandlerRootView>
   );
 }

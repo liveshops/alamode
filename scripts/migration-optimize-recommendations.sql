@@ -69,13 +69,13 @@ BEGIN
     WHERE ufb.user_id = target_user_id
   ),
   -- OPTIMIZATION: Pre-filter to a reasonable candidate set BEFORE scoring
-  -- This is the key fix - we limit the rows we process
+  -- Uses NOT EXISTS instead of NOT IN for better performance with large sets
   candidate_products AS (
     SELECT p.*, b.name as b_name, b.slug as b_slug
     FROM products p
     JOIN brands b ON b.id = p.brand_id
     WHERE p.is_available = true
-      AND p.id NOT IN (SELECT product_id FROM user_liked)
+      AND NOT EXISTS (SELECT 1 FROM user_liked ul WHERE ul.product_id = p.id)
       AND (
         -- Include products from followed brands (high priority)
         p.brand_id IN (SELECT brand_id FROM followed_brands)

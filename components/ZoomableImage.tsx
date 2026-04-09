@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import React from 'react';
 import { StyleSheet, ViewStyle } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -103,20 +103,18 @@ export function ZoomableImage({ uri, style }: ZoomableImageProps) {
   }));
 
   return (
-    <GestureHandlerRootView style={[style, styles.overflow]}>
-      <GestureDetector gesture={composed}>
-        <Animated.View style={[styles.fill, animatedStyle]}>
-          <Image
-            source={{ uri }}
-            style={styles.image}
-            contentFit="cover"
-            transition={200}
-            priority="high"
-            cachePolicy="disk"
-          />
-        </Animated.View>
-      </GestureDetector>
-    </GestureHandlerRootView>
+    <GestureDetector gesture={composed}>
+      <Animated.View style={[style, styles.overflow, styles.fill, animatedStyle]}>
+        <Image
+          source={{ uri }}
+          style={styles.image}
+          contentFit="cover"
+          transition={200}
+          priority="high"
+          cachePolicy="disk"
+        />
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
