@@ -32,7 +32,7 @@ RETURNS TABLE (
   created_at TIMESTAMPTZ
 )
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 AS $$
 DECLARE
   user_prefs user_preferences%ROWTYPE;
@@ -75,10 +75,10 @@ BEGIN
     FROM products p
     JOIN brands b ON b.id = p.brand_id
     WHERE p.is_available = true
-      AND NOT EXISTS (SELECT 1 FROM user_liked ul WHERE ul.product_id = p.id)
+      AND p.id NOT IN (SELECT ul.product_id FROM user_liked ul)
       AND (
         -- Include products from followed brands (high priority)
-        p.brand_id IN (SELECT brand_id FROM followed_brands)
+        p.brand_id IN (SELECT fb.brand_id FROM followed_brands fb)
         OR
         -- Include recent products (discovery)
         p.created_at > NOW() - INTERVAL '30 days'
