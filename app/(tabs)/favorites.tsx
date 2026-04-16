@@ -3,6 +3,7 @@ import { HorizontalProductCard } from '@/components/HorizontalProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { supabase } from '@/utils/supabase';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -344,6 +345,29 @@ export default function FavoritesScreen() {
     }
   };
 
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <Text style={styles.appName}>cherry</Text>
+        </View>
+        <View style={styles.guestContainer}>
+          <Ionicons name="heart-outline" size={64} color="#ccc" />
+          <Text style={styles.guestTitle}>Your Favorites</Text>
+          <Text style={styles.guestSubtext}>
+            Sign in to save your favorite products and brands
+          </Text>
+          <TouchableOpacity
+            style={styles.signInButton}
+            onPress={() => router.push('/(auth)/login')}
+            activeOpacity={0.7}>
+            <Text style={styles.signInButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (loading && !refreshing) {
     return (
       <View style={[styles.centerContainer, { paddingTop: insets.top }]}>
@@ -546,5 +570,34 @@ const styles = StyleSheet.create({
   footerLoader: {
     paddingVertical: 20,
     alignItems: 'center',
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  guestSubtext: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  signInButton: {
+    paddingHorizontal: 48,
+    paddingVertical: 14,
+    backgroundColor: '#000',
+  },
+  signInButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    letterSpacing: 1,
   },
 });

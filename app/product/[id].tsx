@@ -3,6 +3,7 @@ import { ZoomableImage } from '@/components/ZoomableImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { useSimilarProducts } from '@/hooks/useRecommendations';
+import { requireAuth } from '@/utils/authGuard';
 import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -138,7 +139,8 @@ export default function ProductDetailScreen() {
   );
 
   const handleToggleLike = async () => {
-    if (!user || !product) return;
+    if (!requireAuth(user, 'like products')) return;
+    if (!product) return;
 
     const wasLiked = isLiked;
 
@@ -197,10 +199,11 @@ export default function ProductDetailScreen() {
   };
 
   const handleLongPress = useCallback(() => {
+    if (!requireAuth(user, 'save to collections')) return;
     if (product) {
       setCollectionSheetVisible(true);
     }
-  }, [product]);
+  }, [product, user]);
 
   const handleImageScroll = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;

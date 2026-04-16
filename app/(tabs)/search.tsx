@@ -5,6 +5,7 @@ import { UserCard } from '@/components/UserCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
 import { RecommendedProduct } from '@/hooks/useRecommendations';
+import { requireAuth } from '@/utils/authGuard';
 import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { buildSearchFilter } from '@/utils/searchUtils';
 import { supabase } from '@/utils/supabase';
@@ -707,7 +708,7 @@ export default function SearchScreen() {
   }, [router]);
 
   const handleToggleLikeProduct = async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'like products')) return;
 
     // Check both product lists
     const product = products.find((p) => p.id === productId);
@@ -782,7 +783,7 @@ export default function SearchScreen() {
   };
 
   const handleToggleLikeProductInBrand = async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'like products')) return;
 
     // Find the product in brands
     let product: Product | undefined;
@@ -863,7 +864,7 @@ export default function SearchScreen() {
   };
 
   const handleToggleFollowBrand = async (brandId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'follow brands')) return;
 
     const wasFollowing = followedBrandIds.has(brandId);
 
@@ -933,7 +934,7 @@ export default function SearchScreen() {
   };
 
   const handleToggleFollowUser = async (userId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'follow users')) return;
 
     const wasFollowing = followedUserIds.has(userId);
 
@@ -1122,7 +1123,7 @@ export default function SearchScreen() {
             <Text style={styles.emptySubtext}>
               {debouncedQuery 
                 ? 'Try a different name or username'
-                : 'Be the first to invite your friends!'}
+                : 'Search for people to follow'}
             </Text>
           </View>
         )

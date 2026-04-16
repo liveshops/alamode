@@ -3,6 +3,7 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTabRefresh } from '@/contexts/HomeRefreshContext';
 import { Product } from '@/hooks/useProducts';
+import { requireAuth } from '@/utils/authGuard';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -153,12 +154,8 @@ export default function NewTodayScreen() {
 
   // Refetch if user changes (login/logout)
   useEffect(() => {
-    if (user && !hasLoadedRef.current) {
-      initializeFeed();
-    } else if (!user) {
-      setFeedItems([]);
-      hasLoadedRef.current = false;
-    }
+    hasLoadedRef.current = false;
+    initializeFeed();
   }, [user]);
 
   // Fetch a page of products for a given day using the single DB function
@@ -167,33 +164,50 @@ export default function NewTodayScreen() {
     limit: number,
     offset: number
   ): Promise<Product[]> => {
-    if (!user) return [];
+    if (user) {
+      // Authenticated: use personalized RPC
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
 
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
+      const { data, error } = await supabase.rpc('get_new_today_feed', {
+        p_user_id: user.id,
+        p_day_offset: dayOffset,
+        p_limit: limit,
+        p_offset: offset,
+        p_timezone: userTimezone,
+      });
 
-    const { data, error } = await supabase.rpc('get_new_today_feed', {
-      p_user_id: user.id,
-      p_day_offset: dayOffset,
-      p_limit: limit,
-      p_offset: offset,
-      p_timezone: userTimezone,
-    });
+      if (error) throw error;
+
+      const interleaved = scoreAndInterleaveProducts(data || []);
+      return interleaved.map(mapRpcToProduct);
+    }
+
+    // Guest mode: fetch recent products directly
+    const now = new Date();
+    const startOfDay = new Date(now);
+    startOfDay.setDate(startOfDay.getDate() - dayOffset);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+
+    const { data, error } = await supabase
+      .from('products')
+      .select(`
+        id, name, price, sale_price, currency, image_url, additional_images, product_url, like_count, created_at, brand_id,
+        brand:brands(id, name, slug, logo_url)
+      `)
+      .eq('is_available', true)
+      .gte('created_at', startOfDay.toISOString())
+      .lt('created_at', endOfDay.toISOString())
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) throw error;
-
-    // Score, interleave by brand, then map to Product shape
-    const interleaved = scoreAndInterleaveProducts(data || []);
-    return interleaved.map(mapRpcToProduct);
+    return (data || []).map((item: any) => ({ ...item, is_liked: false }));
   };
 
   // Initialize the feed
   const initializeFeed = async () => {
-    if (!user) {
-      setFeedItems([]);
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
       setCurrentDayOffset(0);
@@ -291,7 +305,7 @@ export default function NewTodayScreen() {
   }, [router]);
 
   const handleToggleLike = useCallback(async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'like products')) return;
 
     // Determine current like state from feedItems via functional setState
     let wasLiked = false;
@@ -350,7 +364,7 @@ export default function NewTodayScreen() {
   }, [user]);
 
   const markNotInterested = async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'customize your feed')) return;
     
     // Optimistically remove from feed
     setFeedItems(prev => prev.filter(item => 
@@ -369,6 +383,7 @@ export default function NewTodayScreen() {
   };
 
   const handleLongPressItem = useCallback((product: { id: string; name: string }) => {
+    if (!requireAuth(user, 'save products')) return;
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {

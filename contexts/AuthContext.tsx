@@ -28,6 +28,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signInWithApple: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<{ error: Error | null }>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
 }
@@ -151,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             display_name: displayName,
             phone_number: phoneNumber || null,
           },
-          emailRedirectTo: 'new1://auth/callback',
+          emailRedirectTo: 'cherry://auth/callback',
         },
       });
 
@@ -278,6 +279,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const deleteAccount = async (): Promise<{ error: Error | null }> => {
+    if (!user) return { error: new Error('Not authenticated') };
+
+    try {
+      const userId = user.id;
+
+      // Delete user data from all related tables
+      await supabase.from('user_likes_products').delete().eq('user_id', userId);
+      await supabase.from('user_follows_brands').delete().eq('user_id', userId);
+      await supabase.from('user_not_interested').delete().eq('user_id', userId);
+
+      // Delete collections and their products
+      const { data: userCollections } = await supabase
+        .from('collections')
+        .select('id')
+        .eq('user_id', userId);
+
+      if (userCollections && userCollections.length > 0) {
+        const collectionIds = userCollections.map((c) => c.id);
+        await supabase.from('collection_products').delete().in('collection_id', collectionIds);
+        await supabase.from('collections').delete().eq('user_id', userId);
+      }
+
+      // Delete follow relationships (both directions)
+      await supabase.from('user_follows').delete().eq('follower_id', userId);
+      await supabase.from('user_follows').delete().eq('followed_id', userId);
+
+      // Delete profile
+      await supabase.from('profiles').delete().eq('id', userId);
+
+      // Sign out (clears local session)
+      await supabase.auth.signOut();
+
+      return { error: null };
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      return { error: error as Error };
+    }
+  };
+
   const resetPassword = async (email: string) => {
     try {
       // Redirect to web page for password reset
@@ -301,6 +342,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithGoogle,
     signInWithApple,
     signOut,
+    deleteAccount,
     resetPassword,
     refreshProfile,
   };

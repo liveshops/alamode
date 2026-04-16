@@ -2,6 +2,7 @@ import { AddToCollectionSheet } from '@/components/AddToCollectionSheet';
 import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
+import { requireAuth } from '@/utils/authGuard';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -227,7 +228,8 @@ export default function BrandProfileScreen() {
   };
 
   const handleToggleFollow = async () => {
-    if (!user || !brand) return;
+    if (!requireAuth(user, 'follow brands')) return;
+    if (!brand) return;
 
     const wasFollowing = isFollowing;
 
@@ -286,7 +288,7 @@ export default function BrandProfileScreen() {
   };
 
   const handleToggleLike = async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'like products')) return;
 
     const product = products.find((p) => p.id === productId);
     if (!product) return;

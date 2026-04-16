@@ -11,9 +11,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import {
+    ActionSheetIOS,
     ActivityIndicator,
+    Alert,
     FlatList,
     Image,
+    Platform,
     RefreshControl,
     StyleSheet,
     Text,
@@ -34,7 +37,7 @@ interface BrandWithProducts {
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, deleteAccount } = useAuth();
 
   const [likedProducts, setLikedProducts] = useState<Product[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
@@ -277,6 +280,57 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your account? This will remove all your data including liked products, collections, and followers. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await deleteAccount();
+              if (error) {
+                Alert.alert('Error', 'Failed to delete account. Please try again.');
+              } else {
+                router.replace('/(auth)/login');
+              }
+            } catch (err) {
+              console.error('Error deleting account:', err);
+              Alert.alert('Error', 'Failed to delete account. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSettingsPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Edit Profile', 'Log Out', 'Delete Account', 'Cancel'],
+          destructiveButtonIndex: 2,
+          cancelButtonIndex: 3,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) router.push('/edit-profile');
+          else if (buttonIndex === 1) handleLogout();
+          else if (buttonIndex === 2) handleDeleteAccount();
+        }
+      );
+    } else {
+      Alert.alert('Settings', undefined, [
+        { text: 'Edit Profile', onPress: () => router.push('/edit-profile') },
+        { text: 'Log Out', onPress: handleLogout },
+        { text: 'Delete Account', style: 'destructive', onPress: handleDeleteAccount },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
   const handleLongPress = (product: Product) => {
     setSelectedProduct({ id: product.id, name: product.name });
     setCollectionSheetVisible(true);
@@ -398,10 +452,31 @@ export default function ProfileScreen() {
     );
   }
 
-  if (!profile) {
+  if (!user || !profile) {
     return (
-      <View style={[styles.centerContainer, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>Profile not found</Text>
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <Text style={styles.appName}>cherry</Text>
+        </View>
+        <View style={styles.guestContainer}>
+          <Ionicons name="person-outline" size={64} color="#ccc" />
+          <Text style={styles.guestTitle}>Your Profile</Text>
+          <Text style={styles.guestSubtext}>
+            Sign in to manage your profile, collections, and more
+          </Text>
+          <TouchableOpacity
+            style={styles.signInButton}
+            onPress={() => router.push('/(auth)/login')}
+            activeOpacity={0.7}>
+            <Text style={styles.signInButtonText}>Sign In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.signUpLink}
+            onPress={() => router.push('/(auth)/signup')}
+            activeOpacity={0.7}>
+            <Text style={styles.signUpLinkText}>Don't have an account? Sign Up</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -414,6 +489,12 @@ export default function ProfileScreen() {
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => router.replace('/')} activeOpacity={0.7}>
           <Text style={styles.appName}>cherry</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={handleSettingsPress}
+          activeOpacity={0.7}>
+          <Ionicons name="settings-outline" size={22} color="#000" />
         </TouchableOpacity>
       </View>
 
@@ -469,22 +550,6 @@ export default function ProfileScreen() {
                 <Text style={styles.statLabel}>Following</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Edit Profile Button */}
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => router.push('/edit-profile')}
-              activeOpacity={0.7}>
-              <Text style={styles.editButtonText}>Edit Profile</Text>
-            </TouchableOpacity>
-
-            {/* Logout Button */}
-            <TouchableOpacity
-              style={styles.logoutButton}
-              onPress={handleLogout}
-              activeOpacity={0.7}>
-              <Text style={styles.logoutButtonText}>Log Out</Text>
-            </TouchableOpacity>
 
             {/* Category Tabs */}
             <View style={styles.categoryTabs}>
@@ -624,11 +689,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
     paddingHorizontal: 16,
     paddingBottom: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  settingsButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 10,
+    padding: 4,
   },
   appName: {
     fontFamily: 'AbrilFatface-Regular',
@@ -703,32 +777,6 @@ const styles = StyleSheet.create({
     width: 1,
     height: 40,
     backgroundColor: '#ddd',
-  },
-  editButton: {
-    paddingHorizontal: 48,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#000',
-    borderRadius: 0,
-    marginBottom: 12,
-  },
-  editButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#000',
-  },
-  logoutButton: {
-    paddingHorizontal: 48,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 0,
-    marginBottom: 32,
-  },
-  logoutButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#666',
   },
   categoryTabs: {
     flexDirection: 'row',
@@ -826,6 +874,43 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
+    color: '#666',
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  guestSubtext: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  signInButton: {
+    paddingHorizontal: 48,
+    paddingVertical: 14,
+    backgroundColor: '#000',
+    marginBottom: 16,
+  },
+  signInButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    letterSpacing: 1,
+  },
+  signUpLink: {
+    paddingVertical: 8,
+  },
+  signUpLinkText: {
+    fontSize: 14,
     color: '#666',
   },
 });

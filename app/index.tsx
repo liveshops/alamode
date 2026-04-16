@@ -3,7 +3,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 export default function Index() {
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -13,12 +13,8 @@ export default function Index() {
     );
   }
 
-  // Redirect based on auth state
-  if (user) {
-    return <Redirect href="/(tabs)" />;
-  }
-
-  return <Redirect href="/(auth)/login" />;
+  // Always redirect to tabs — guests can browse without logging in
+  return <Redirect href="/(tabs)" />;
 }
 
 const styles = StyleSheet.create({

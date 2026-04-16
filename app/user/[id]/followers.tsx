@@ -1,5 +1,6 @@
 import { UserCard } from '@/components/UserCard';
 import { useAuth } from '@/contexts/AuthContext';
+import { requireAuth } from '@/utils/authGuard';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -131,7 +132,7 @@ export default function UserFollowersScreen() {
   };
 
   const handleToggleFollow = async (userId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'follow users')) return;
 
     // Don't allow following yourself
     if (userId === user.id) return;

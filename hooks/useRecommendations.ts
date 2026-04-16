@@ -224,10 +224,63 @@ export function useRecommendations(initialLimit = 20) {
     }
   };
 
+  // Fetch popular products for guests (no auth required)
+  const fetchGuestProducts = useCallback(async (loadMore = false) => {
+    try {
+      if (loadMore) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setOffset(0);
+      }
+      setError(null);
+
+      const currentOffset = loadMore ? offset : 0;
+
+      const { data, error: queryError } = await supabase
+        .from('products')
+        .select(`
+          id, name, price, sale_price, image_url, additional_images, product_url, like_count,
+          taxonomy_category_name, created_at,
+          brand:brands(id, name, slug)
+        `)
+        .eq('is_available', true)
+        .order('like_count', { ascending: false })
+        .range(currentOffset, currentOffset + initialLimit - 1);
+
+      if (queryError) throw queryError;
+
+      const mapped: RecommendedProduct[] = (data || []).map((item: any) => ({
+        ...item,
+        product_id: item.id,
+        brand_id: item.brand?.id,
+        brand_name: item.brand?.name,
+        brand_slug: item.brand?.slug,
+        is_liked_by_user: false,
+        is_liked: false,
+        recommendation_score: 0,
+        recommendation_reason: 'Popular',
+      }));
+
+      if (loadMore) {
+        setProducts(prev => [...prev, ...mapped]);
+      } else {
+        setProducts(mapped);
+      }
+      setOffset(currentOffset + mapped.length);
+      setHasMore(mapped.length >= initialLimit);
+    } catch (err) {
+      console.error('Error fetching guest products:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load products');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [offset, initialLimit]);
+
   const fetchRecommendations = useCallback(async (loadMore = false) => {
     if (!user) {
-      setProducts([]);
-      setLoading(false);
+      fetchGuestProducts(loadMore);
       return;
     }
 
@@ -344,6 +397,7 @@ export function useRecommendations(initialLimit = 20) {
 
   useEffect(() => {
     fetchRecommendations();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const toggleLike = async (productId: string) => {

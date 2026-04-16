@@ -6,6 +6,7 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCollections } from '@/hooks/useCollections';
 import { Product } from '@/hooks/useProducts';
+import { requireAuth } from '@/utils/authGuard';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -310,7 +311,7 @@ export default function UserProfileScreen() {
   };
 
   const handleToggleLike = async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'like products')) return;
 
     const product = likedProducts.find((p) => p.id === productId);
     if (!product) return;
@@ -366,7 +367,7 @@ export default function UserProfileScreen() {
 
   // Handler for toggling follow on a brand
   const handleToggleBrandFollow = async (brandId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'follow brands')) return;
 
     const wasFollowing = myFollowedBrandIds.has(brandId);
 
@@ -437,7 +438,7 @@ export default function UserProfileScreen() {
 
   // Handler for toggling like on products within brand rows
   const handleBrandProductLike = async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'like products')) return;
 
     // Find the product across all brands
     let targetBrand: BrandWithProducts | undefined;

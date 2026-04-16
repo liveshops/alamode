@@ -1,6 +1,7 @@
 import { BrandRowCard } from '@/components/BrandRowCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { Product } from '@/hooks/useProducts';
+import { requireAuth } from '@/utils/authGuard';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -163,7 +164,7 @@ export default function UserBrandsScreen() {
   };
 
   const handleToggleFollow = async (brandId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'follow brands')) return;
 
     const wasFollowing = followedBrandIds.has(brandId);
 
@@ -241,7 +242,7 @@ export default function UserBrandsScreen() {
   };
 
   const handleToggleLike = async (productId: string) => {
-    if (!user) return;
+    if (!requireAuth(user, 'like products')) return;
 
     // Find the product across all brands
     let targetBrand: BrandWithProducts | undefined;

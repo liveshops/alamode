@@ -3,6 +3,7 @@ import { ProductCard } from '@/components/ProductCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHomeRefresh } from '@/contexts/HomeRefreshContext';
 import { useRecommendations } from '@/hooks/useRecommendations';
+import { requireAuth } from '@/utils/authGuard';
 import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -14,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const { products, loading, loadingMore, error, hasMore, refetch, loadMore, toggleLike, markNotInterested } = useRecommendations(20);
   const [refreshing, setRefreshing] = useState(false);
   const [collectionSheetVisible, setCollectionSheetVisible] = useState(false);
@@ -67,10 +68,12 @@ export default function HomeScreen() {
   }, [router]);
 
   const handleToggleLike = useCallback((productId: string) => {
+    if (!requireAuth(user, 'like products')) return;
     toggleLike(productId);
-  }, [toggleLike]);
+  }, [toggleLike, user]);
 
   const handleLongPressItem = useCallback((product: { id: string; name: string }) => {
+    if (!requireAuth(user, 'save products')) return;
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
@@ -115,7 +118,7 @@ export default function HomeScreen() {
         ]
       );
     }
-  }, [markNotInterested]);
+  }, [markNotInterested, user]);
 
   // Prefetch images for upcoming products - reduced count to minimize memory pressure
   const prefetchImages = useCallback((startIndex: number) => {
