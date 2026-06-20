@@ -6,6 +6,11 @@ import { Image } from 'expo-image';
 import React, { memo, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+// Neutral light-gray blurhash shown while the real image loads, giving a smooth
+// cross-fade instead of a flat gray flash. For a bigger perceived-speed win later,
+// store a per-image blurhash at ingest and pass it through here.
+const PLACEHOLDER_BLURHASH = 'A0SF;LfQfQfQ';
+
 /**
  * Get recency badge text based on product created_at date
  * Returns hours for <24h, then days (1d-6d), weeks (1w-4w), months (1m+)
@@ -43,10 +48,15 @@ interface ProductCardProps {
   onLike: () => void;
   onBrandPress?: () => void;
   onLongPress?: () => void;
+  /** Loading priority for the primary image. Use 'high' for above-the-fold cards. */
+  priority?: 'low' | 'normal' | 'high';
 }
 
-export const ProductCard = memo(function ProductCard({ product, onPress, onLike, onBrandPress, onLongPress }: ProductCardProps) {
+export const ProductCard = memo(function ProductCard({ product, onPress, onLike, onBrandPress, onLongPress, priority = 'normal' }: ProductCardProps) {
   const [imageWidth, setImageWidth] = useState(0);
+  // Carousel images beyond the first are only fetched once the user swipes the card,
+  // so the feed downloads 1 image per product instead of all 3-5.
+  const [carouselActivated, setCarouselActivated] = useState(false);
   
   // Memoize expensive calculations
   const allImages = useMemo(() => 
@@ -97,6 +107,7 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
             bounces={true}
             alwaysBounceHorizontal={true}
             nestedScrollEnabled={true}
+            onScrollBeginDrag={() => setCarouselActivated(true)}
             style={styles.imageScrollView}>
             {allImages.map((imageUrl, index) => (
               <Pressable
@@ -109,15 +120,21 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
                   }
                 }}
                 delayLongPress={400}>
-                <Image
-                  source={{ uri: imageUrl }}
-                  style={[styles.image, { width: imageWidth }]}
-                  contentFit="cover"
-                  transition={200}
-                  priority="normal"
-                  cachePolicy="disk"
-                  recyclingKey={imageUrl}
-                />
+                {index === 0 || carouselActivated ? (
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={[styles.image, { width: imageWidth }]}
+                    contentFit="cover"
+                    transition={200}
+                    priority={index === 0 ? priority : 'low'}
+                    cachePolicy="memory-disk"
+                    recyclingKey={imageUrl}
+                    placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+                    placeholderContentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.image, styles.imagePlaceholder, { width: imageWidth }]} />
+                )}
               </Pressable>
             ))}
           </ScrollView>
@@ -136,9 +153,11 @@ export const ProductCard = memo(function ProductCard({ product, onPress, onLike,
               style={styles.image} 
               contentFit="cover"
               transition={200}
-              priority="normal"
-              cachePolicy="disk"
+              priority={priority}
+              cachePolicy="memory-disk"
               recyclingKey={allImages[0] || ''}
+              placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+              placeholderContentFit="cover"
             />
           </Pressable>
         )}
@@ -222,6 +241,9 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  imagePlaceholder: {
+    backgroundColor: '#f0f0f0',
   },
   heartButton: {
     position: 'absolute',

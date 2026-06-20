@@ -11,6 +11,7 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { execSync } = require('child_process');
+const { prewarmRecentImages } = require('./prewarm-images');
 
 const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL,
@@ -134,7 +135,8 @@ async function syncAllApifyBrands() {
   console.log('🎉 APIFY SYNC COMPLETE - FINAL REPORT');
   console.log('='.repeat(90));
   
-  console.log(`\n⏱️  Total time: ${minutes}m ${seconds}s`);
+  console.log(`\n📅 ${new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}`);
+  console.log(`⏱️  Total time: ${minutes}m ${seconds}s`);
   console.log(`\n📊 Overall Statistics:`);
   console.log(`   ✅ Brands successful: ${successful}`);
   console.log(`   ❌ Brands failed: ${failed}`);
@@ -189,6 +191,18 @@ async function syncAllApifyBrands() {
       console.error('⚠️  Notification error:', err.message);
     }
     console.log('');
+  }
+
+  // Pre-warm Cloudinary cache for newly added non-Shopify images so the first users
+  // to open the New Today feed get instant CDN hits instead of cold transforms.
+  // Shopify images are skipped inside prewarmRecentImages (already fast on Shopify CDN).
+  if (totalAdded > 0) {
+    try {
+      const elapsedHours = Math.max(1, Math.ceil((Date.now() - startTime) / (60 * 60 * 1000)) + 1);
+      await prewarmRecentImages({ hours: elapsedHours });
+    } catch (err) {
+      console.error('⚠️  Image pre-warm error:', err.message);
+    }
   }
 }
 

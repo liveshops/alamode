@@ -14,7 +14,8 @@
     "sync-products": "node scripts/sync-products-from-apify.js",
     "sync-brands": "node scripts/sync-all-brands.js",
     "sync-new": "node scripts/sync-all-brands-new-only.js",
-    "test-scraper": "node scripts/test-scraper.js"
+    "test-scraper": "node scripts/test-scraper.js",
+    "prewarm-images": "node scripts/prewarm-images.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

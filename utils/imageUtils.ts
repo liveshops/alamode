@@ -8,7 +8,10 @@
 const CLOUDINARY_CLOUD_NAME = 'dihoddmmi';
 
 // Standard sizes for different contexts
-export const IMAGE_SIZE_FEED = 800;      // Product cards in 2-column grid (~190pt × 3x retina)
+// Feed cards are ~180pt wide in a 2-column grid; 540 = 180pt × 3x retina (covers the
+// densest phones). Dropping from 800 cuts the payload ~55% (bytes scale with pixel area)
+// with no visible quality loss, and roughly halves decoded-bitmap RAM per card.
+export const IMAGE_SIZE_FEED = 540;      // Product cards in 2-column grid (~180pt × 3x retina)
 export const IMAGE_SIZE_DETAIL = 1200;   // Full-width product detail page
 
 /**

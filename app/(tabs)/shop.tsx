@@ -4,8 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTabRefresh } from '@/contexts/HomeRefreshContext';
 import { Product } from '@/hooks/useProducts';
 import { requireAuth } from '@/utils/authGuard';
+import { getOptimizedImageUrl } from '@/utils/imageUtils';
 import { supabase } from '@/utils/supabase';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -19,6 +21,7 @@ import {
     Text,
     TouchableOpacity,
     View,
+    ViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -457,8 +460,43 @@ export default function NewTodayScreen() {
     return rows;
   }, [feedItems]);
 
+  // Keep latest rows in a ref so the stable viewability callback reads current data.
+  const rowItemsRef = useRef<RowItem[]>([]);
+  rowItemsRef.current = rowItems;
+  const prefetchedUrls = useRef<Set<string>>(new Set());
+
+  // Prefetch primary images for upcoming rows to DISK only: warms the network + disk
+  // cache (the slow part) without inflating in-memory bitmap RAM.
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length === 0) return;
+    const lastVisibleIndex = Math.max(...viewableItems.map(v => v.index ?? 0));
+    const rows = rowItemsRef.current;
+
+    if (prefetchedUrls.current.size > 200) prefetchedUrls.current.clear();
+
+    const PREFETCH_ROWS = 4;
+    let scanned = 0;
+    for (let i = lastVisibleIndex + 1; i < rows.length && scanned < PREFETCH_ROWS; i++) {
+      const row = rows[i];
+      if (row.type !== 'productRow') continue;
+      scanned++;
+      for (const p of row.products) {
+        const url = p?.image_url;
+        if (url && !prefetchedUrls.current.has(url)) {
+          prefetchedUrls.current.add(url);
+          Image.prefetch(getOptimizedImageUrl(url), 'disk');
+        }
+      }
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 10,
+    minimumViewTime: 100,
+  }).current;
+
   // Render a row item (section header or product pair)
-  const renderRowItem = useCallback(({ item }: { item: RowItem }) => {
+  const renderRowItem = useCallback(({ item, index }: { item: RowItem; index: number }) => {
     if (item.type === 'section') {
       return (
         <View style={styles.sectionHeader}>
@@ -470,11 +508,13 @@ export default function NewTodayScreen() {
     }
 
     const [first, second] = item.products;
+    const priority = index < 4 ? 'high' : 'normal';
     return (
       <View style={styles.rowWrapper}>
         <View style={styles.cardWrapper}>
           <ProductCard
             product={first}
+            priority={priority}
             onPress={() => handleProductPress(first.id)}
             onLike={() => handleToggleLike(first.id)}
             onBrandPress={() => handleBrandPress(first.brand?.slug || '')}
@@ -485,6 +525,7 @@ export default function NewTodayScreen() {
           <View style={styles.cardWrapper}>
             <ProductCard
               product={second}
+              priority={priority}
               onPress={() => handleProductPress(second.id)}
               onLike={() => handleToggleLike(second.id)}
               onBrandPress={() => handleBrandPress(second.brand?.slug || '')}
@@ -528,6 +569,8 @@ export default function NewTodayScreen() {
           scrollPositionRef.current = e.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         maxToRenderPerBatch={8}

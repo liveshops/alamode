@@ -120,32 +120,35 @@ export default function HomeScreen() {
     }
   }, [markNotInterested, user]);
 
-  // Prefetch images for upcoming products - reduced count to minimize memory pressure
-  const prefetchImages = useCallback((startIndex: number) => {
-    const PREFETCH_COUNT = 6; // Reduced from 20 to minimize memory usage
-    const endIndex = Math.min(startIndex + PREFETCH_COUNT, products.length);
-    
+  // Keep a ref of the latest products so the (stable) viewability callback always
+  // reads current data. FlatList only binds onViewableItemsChanged once, so it must
+  // not depend on changing closures.
+  const productsRef = useRef(products);
+  productsRef.current = products;
+
+  // Track visible items and prefetch upcoming images to DISK only: this warms the
+  // network + disk cache (the slow part) without inflating in-memory bitmap RAM.
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length === 0) return;
+    const lastVisibleIndex = Math.max(...viewableItems.map(item => item.index ?? 0));
+    const startIndex = lastVisibleIndex + 4;
+    const list = productsRef.current;
+    const PREFETCH_COUNT = 6;
+    const endIndex = Math.min(startIndex + PREFETCH_COUNT, list.length);
+
     // Clear old prefetch tracking if it grows too large to prevent memory leaks
-    if (prefetchedUrls.current.size > 100) {
+    if (prefetchedUrls.current.size > 200) {
       prefetchedUrls.current.clear();
     }
-    
+
     for (let i = startIndex; i < endIndex; i++) {
-      const product = products[i];
+      const product = list[i];
       if (product?.image_url && !prefetchedUrls.current.has(product.image_url)) {
         prefetchedUrls.current.add(product.image_url);
-        Image.prefetch(getOptimizedImageUrl(product.image_url));
+        Image.prefetch(getOptimizedImageUrl(product.image_url), 'disk');
       }
     }
-  }, [products]);
-
-  // Track visible items and prefetch ahead
-  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    if (viewableItems.length > 0) {
-      const lastVisibleIndex = Math.max(...viewableItems.map(item => item.index ?? 0));
-      prefetchImages(lastVisibleIndex + 4);
-    }
-  }, [prefetchImages]);
+  }).current;
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 10,
@@ -153,10 +156,11 @@ export default function HomeScreen() {
   }).current;
 
   // Memoized render function to prevent unnecessary re-renders
-  const renderProductItem = useCallback(({ item }: { item: any }) => (
+  const renderProductItem = useCallback(({ item, index }: { item: any; index: number }) => (
     <View style={styles.cardWrapper}>
       <ProductCard
         product={item}
+        priority={index < 6 ? 'high' : 'normal'}
         onPress={() => handleProductPress(item.id)}
         onLike={() => handleToggleLike(item.id)}
         onBrandPress={() => handleBrandPress(item.brand.slug)}
