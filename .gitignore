@@ -31,6 +31,9 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# cron / launchd logs
+logs/
+
 # macOS
 .DS_Store
 *.pem

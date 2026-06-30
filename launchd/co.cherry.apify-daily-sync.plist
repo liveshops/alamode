@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Unique identifier for this launchd job -->
+    <key>Label</key>
+    <string>co.cherry.apify-daily-sync</string>
+
+    <!-- Run: /usr/local/bin/node /Users/imacpro/new1/scripts/daily-apify-sync.js -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/Users/imacpro/new1/scripts/daily-apify-sync.js</string>
+    </array>
+
+    <!-- Run from the repo root so dotenv finds .env and relative script paths resolve -->
+    <key>WorkingDirectory</key>
+    <string>/Users/imacpro/new1</string>
+
+    <!-- Fire once per day at 11:30 AM. daily-apify-sync.js starts the scrapers,
+         waits 40 min internally, then runs the sync (~12:10 PM). -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>11</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <!-- Do NOT run immediately when the job is loaded -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Ensure child `node`/`npx` calls (execSync) can be found -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Capture all output for debugging -->
+    <key>StandardOutPath</key>
+    <string>/Users/imacpro/new1/logs/apify-daily-sync.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/imacpro/new1/logs/apify-daily-sync.err.log</string>
+</dict>
+</plist>

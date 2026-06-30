@@ -15,7 +15,11 @@
     "sync-brands": "node scripts/sync-all-brands.js",
     "sync-new": "node scripts/sync-all-brands-new-only.js",
     "test-scraper": "node scripts/test-scraper.js",
-    "prewarm-images": "node scripts/prewarm-images.js"
+    "prewarm-images": "node scripts/prewarm-images.js",
+    "start-scrapers": "node scripts/start-all-apify-scrapers.js",
+    "sync-apify": "node scripts/sync-all-apify-brands.js",
+    "daily-sync": "node scripts/daily-apify-sync.js",
+    "sync-report": "node scripts/sync-report.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

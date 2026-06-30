@@ -12,6 +12,7 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { execSync } = require('child_process');
 const { prewarmRecentImages } = require('./prewarm-images');
+const { printSyncReport } = require('./lib/print-sync-report');
 
 const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL,
@@ -119,59 +120,9 @@ async function syncAllApifyBrands() {
     }
   }
   
-  // Print final summary report
-  const elapsed = Math.floor((Date.now() - startTime) / 1000);
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
-  
-  const totalAdded = results.reduce((sum, r) => sum + (r.added || 0), 0);
-  const totalUpdated = results.reduce((sum, r) => sum + (r.updated || 0), 0);
-  const totalDeleted = results.reduce((sum, r) => sum + (r.deleted || 0), 0);
-  const grandTotal = results.reduce((sum, r) => sum + (r.total || 0), 0);
-  const successful = results.filter(r => r.success).length;
-  const failed = results.filter(r => !r.success).length;
-  
-  console.log('\n' + '='.repeat(90));
-  console.log('🎉 APIFY SYNC COMPLETE - FINAL REPORT');
-  console.log('='.repeat(90));
-  
-  console.log(`\n📅 ${new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}`);
-  console.log(`⏱️  Total time: ${minutes}m ${seconds}s`);
-  console.log(`\n📊 Overall Statistics:`);
-  console.log(`   ✅ Brands successful: ${successful}`);
-  console.log(`   ❌ Brands failed: ${failed}`);
-  console.log(`   ➕ Total products added: ${totalAdded}`);
-  console.log(`   🔄 Total products updated: ${totalUpdated}`);
-  console.log(`   🗑️  Total products deleted: ${totalDeleted}`);
-  console.log(`   📦 Total products in database: ${grandTotal}`);
-  
-  console.log(`\n${'─'.repeat(90)}`);
-  console.log('📋 Brand-by-Brand Breakdown:');
-  console.log('─'.repeat(90));
-  console.log(`${'Brand'.padEnd(25)} ${'Status'.padEnd(8)} ${'Added'.padEnd(7)} ${'Updated'.padEnd(9)} ${'Deleted'.padEnd(9)} ${'Total'.padEnd(8)} ${'Time'.padEnd(6)}`);
-  console.log('─'.repeat(90));
-  
-  results.forEach(r => {
-    const status = r.success ? '✅' : '❌';
-    const brandName = r.brand.length > 23 ? r.brand.substring(0, 20) + '...' : r.brand;
-    console.log(
-      `${brandName.padEnd(25)} ${status.padEnd(8)} ${String(r.added || 0).padEnd(7)} ${String(r.updated || 0).padEnd(9)} ${String(r.deleted || 0).padEnd(9)} ${String(r.total || 0).padEnd(8)} ${r.time || 0}s`
-    );
-  });
-  
-  console.log('─'.repeat(90));
-  console.log(
-    `${'TOTAL'.padEnd(25)} ${' '.padEnd(8)} ${String(totalAdded).padEnd(7)} ${String(totalUpdated).padEnd(9)} ${String(totalDeleted).padEnd(9)} ${String(grandTotal).padEnd(8)}`
-  );
-  
-  if (failed > 0) {
-    console.log(`\n⚠️  Failed brands:`);
-    results.filter(r => !r.success).forEach(r => {
-      console.log(`   - ${r.brand} (${r.slug})`);
-    });
-  }
-  
-  console.log('\n' + '='.repeat(70) + '\n');
+  // Print final summary report (shared with `npm run sync-report`)
+  const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+  const { totalAdded } = printSyncReport(results, { elapsedSeconds });
   
   // Send notifications for brands that added new products
   if (totalAdded > 0) {
