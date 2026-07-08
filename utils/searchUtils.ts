@@ -54,8 +54,42 @@ export function getSearchVariations(term: string): string[] {
 }
 
 /**
+ * Fashion synonym map for query expansion. Conservative on purpose:
+ * only pairs where a searcher clearly wants both terms.
+ */
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  jeans: ['denim'],
+  denim: ['jeans'],
+  sweater: ['jumper'],
+  jumper: ['sweater'],
+  purse: ['handbag'],
+  handbag: ['purse'],
+  swimsuit: ['swimwear'],
+  swimwear: ['swimsuit'],
+  sneakers: ['trainers'],
+  trainers: ['sneakers'],
+};
+
+/**
+ * Expand a search query with fashion synonyms for websearch_to_tsquery.
+ * Single-word queries with a known synonym become "word or synonym";
+ * everything else passes through unchanged (stemming handles plurals).
+ */
+export function expandSearchQuery(searchTerm: string): string {
+  const trimmed = searchTerm.trim().toLowerCase();
+  if (!trimmed || trimmed.includes(' ')) return searchTerm.trim();
+
+  const synonyms = SEARCH_SYNONYMS[trimmed];
+  if (!synonyms) return trimmed;
+
+  return [trimmed, ...synonyms].join(' or ');
+}
+
+/**
  * Build a Supabase OR filter for searching across multiple fields with variations
  * Searches: name, description, taxonomy_category_name
+ * @deprecated Product search now uses the search_products() RPC (full-text search
+ * with relevance ranking). Kept for any remaining non-product callers.
  */
 export function buildSearchFilter(searchTerm: string): string {
   const variations = getSearchVariations(searchTerm);

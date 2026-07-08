@@ -7,7 +7,7 @@ import { Product } from '@/hooks/useProducts';
 import { RecommendedProduct } from '@/hooks/useRecommendations';
 import { requireAuth } from '@/utils/authGuard';
 import { getOptimizedImageUrl } from '@/utils/imageUtils';
-import { buildSearchFilter } from '@/utils/searchUtils';
+import { expandSearchQuery } from '@/utils/searchUtils';
 import { supabase } from '@/utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -225,6 +225,32 @@ export default function SearchScreen() {
     }
   };
 
+  // Relevance-ranked product search via the search_products RPC (FTS).
+  // Returns products with brand object and is_liked already resolved.
+  const searchProductsViaRpc = async (
+    sort: 'relevance' | 'newest' | 'most_liked',
+    currentOffset: number,
+    followedBrandIdsSet: Set<string>,
+    sinceIso?: string,
+  ) => {
+    const { data, error } = await supabase.rpc('search_products', {
+      p_query: expandSearchQuery(debouncedQuery),
+      p_user_id: user?.id ?? null,
+      p_sort: sort,
+      p_brand_ids: sortType === 'followed_brands' && followedBrandIdsSet.size > 0
+        ? Array.from(followedBrandIdsSet)
+        : null,
+      p_since: sinceIso ?? null,
+      p_limit: PRODUCTS_PER_PAGE,
+      p_offset: currentOffset,
+    });
+    if (error) throw error;
+    return (data || []).map((item: any) => ({
+      ...item,
+      brand: { id: item.brand_id, name: item.brand_name, slug: item.brand_slug },
+    }));
+  };
+
   const fetchProductsWithFilters = async (followedBrandIdsSet: Set<string>, reset = true) => {
     try {
       const offset = reset ? 0 : forYouOffset;
@@ -249,40 +275,9 @@ export default function SearchScreen() {
             setForYouOffset(0);
           }
 
-          let query = supabase
-            .from('products')
-            .select(`
-              id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, description,
-              brand:brands(id, name, slug)
-            `)
-            .or(buildSearchFilter(debouncedQuery))
-            .eq('is_available', true)
-            .order('like_count', { ascending: false })
-            .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
-
-          // Apply brand filter if "Followed Brands" is selected
-          if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
-            query = query.in('brand_id', Array.from(followedBrandIdsSet));
-          }
-
-          const { data: searchData, error: searchError } = await query;
-          if (searchError) throw searchError;
-
-          let products = searchData || [];
-          if (user && products.length > 0) {
-            const { data: likedData } = await supabase
-              .from('user_likes_products')
-              .select('product_id')
-              .eq('user_id', user.id)
-              .in('product_id', products.map((p: any) => p.id));
-
-            const likedIds = new Set(likedData?.map(l => l.product_id) || []);
-            products = products.map((p: any) => ({ 
-              ...p, 
-              is_liked: likedIds.has(p.id),
-              brand: p.brand || { id: p.brand_id, name: p.brand_name, slug: p.brand_slug },
-            }));
-          }
+          // Relevance-first search: name matches rank highest, category next,
+          // description-only mentions last (fixes tops showing up for "jeans")
+          const products = await searchProductsViaRpc('relevance', currentOffset, followedBrandIdsSet);
           productsData = products;
           
           if (!reset) {
@@ -299,16 +294,9 @@ export default function SearchScreen() {
           }
           setForYouHasMore(products.length === PRODUCTS_PER_PAGE);
 
-          // Record impressions for search results
-          if (user && productsData.length > 0) {
-            const productIds = productsData.map(p => p.id);
-            supabase.rpc('record_product_impressions', {
-              p_user_id: user.id,
-              p_product_ids: productIds,
-            }).then(({ error }) => {
-              if (error) console.log('Search impression tracking skipped:', error.message);
-            });
-          }
+          // NOTE: search results intentionally do NOT record impressions.
+          // Impressions hard-exclude products from the home feed for 7 days,
+          // and searching is deliberate seeking, not passive feed consumption.
         } else {
           // Personalized recommendations
           const { data, error } = await supabase.rpc('get_recommendations', {
@@ -356,41 +344,43 @@ export default function SearchScreen() {
           setNewestOffset(0);
         }
 
-        let query = supabase
-          .from('products')
-          .select(`
-            id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, created_at, description,
-            brand:brands(id, name, slug)
-          `)
-          .eq('is_available', true)
-          .order('created_at', { ascending: false })
-          .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
-
+        let products: any[] = [];
         if (debouncedQuery) {
-          query = query.or(buildSearchFilter(debouncedQuery));
-        }
+          // Search: only name/category matches, newest first
+          products = await searchProductsViaRpc('newest', currentOffset, followedBrandIdsSet);
+        } else {
+          let query = supabase
+            .from('products')
+            .select(`
+              id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, created_at, description,
+              brand:brands(id, name, slug)
+            `)
+            .eq('is_available', true)
+            .order('created_at', { ascending: false })
+            .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
 
-        if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
-          query = query.in('brand_id', Array.from(followedBrandIdsSet));
-        }
+          if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
+            query = query.in('brand_id', Array.from(followedBrandIdsSet));
+          }
 
-        const { data, error } = await query;
-        if (error) throw error;
+          const { data, error } = await query;
+          if (error) throw error;
 
-        let products = data || [];
-        if (user && products.length > 0) {
-          const { data: likedData } = await supabase
-            .from('user_likes_products')
-            .select('product_id')
-            .eq('user_id', user.id)
-            .in('product_id', products.map((p: any) => p.id));
+          products = data || [];
+          if (user && products.length > 0) {
+            const { data: likedData } = await supabase
+              .from('user_likes_products')
+              .select('product_id')
+              .eq('user_id', user.id)
+              .in('product_id', products.map((p: any) => p.id));
 
-          const likedIds = new Set(likedData?.map(l => l.product_id) || []);
-          products = products.map((p: any) => ({ 
-            ...p, 
-            is_liked: likedIds.has(p.id),
-            brand: p.brand || { id: null, name: 'Unknown', slug: '' },
-          }));
+            const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+            products = products.map((p: any) => ({ 
+              ...p, 
+              is_liked: likedIds.has(p.id),
+              brand: p.brand || { id: null, name: 'Unknown', slug: '' },
+            }));
+          }
         }
 
         if (!reset) {
@@ -407,16 +397,7 @@ export default function SearchScreen() {
         }
         setNewestHasMore(products.length === PRODUCTS_PER_PAGE);
 
-        // Record impressions for newest products
-        if (user && products.length > 0) {
-          const productIds = products.map((p: any) => p.id);
-          supabase.rpc('record_product_impressions', {
-            p_user_id: user.id,
-            p_product_ids: productIds,
-          }).then(({ error }) => {
-            if (error) console.log('Newest impression tracking skipped:', error.message);
-          });
-        }
+        // NOTE: no impression recording in the search tab (see for_you branch)
       } else if (filterType === 'most_liked') {
         // Most liked with time range and pagination
         const days = getTimeRangeDays();
@@ -427,42 +408,44 @@ export default function SearchScreen() {
           setMostLikedOffset(0);
         }
 
-        let query = supabase
-          .from('products')
-          .select(`
-            id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, description,
-            brand:brands(id, name, slug)
-          `)
-          .eq('is_available', true)
-          .gte('created_at', dateThreshold.toISOString())
-          .order('like_count', { ascending: false })
-          .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
-
+        let products: any[] = [];
         if (debouncedQuery) {
-          query = query.or(buildSearchFilter(debouncedQuery));
-        }
+          // Search: only name/category matches, most liked in the time window first
+          products = await searchProductsViaRpc('most_liked', currentOffset, followedBrandIdsSet, dateThreshold.toISOString());
+        } else {
+          let query = supabase
+            .from('products')
+            .select(`
+              id, name, price, sale_price, image_url, additional_images, product_url, like_count, taxonomy_category_name, description,
+              brand:brands(id, name, slug)
+            `)
+            .eq('is_available', true)
+            .gte('created_at', dateThreshold.toISOString())
+            .order('like_count', { ascending: false })
+            .range(currentOffset, currentOffset + PRODUCTS_PER_PAGE - 1);
 
-        if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
-          query = query.in('brand_id', Array.from(followedBrandIdsSet));
-        }
+          if (sortType === 'followed_brands' && followedBrandIdsSet.size > 0) {
+            query = query.in('brand_id', Array.from(followedBrandIdsSet));
+          }
 
-        const { data, error } = await query;
-        if (error) throw error;
+          const { data, error } = await query;
+          if (error) throw error;
 
-        let products = data || [];
-        if (user && products.length > 0) {
-          const { data: likedData } = await supabase
-            .from('user_likes_products')
-            .select('product_id')
-            .eq('user_id', user.id)
-            .in('product_id', products.map((p: any) => p.id));
+          products = data || [];
+          if (user && products.length > 0) {
+            const { data: likedData } = await supabase
+              .from('user_likes_products')
+              .select('product_id')
+              .eq('user_id', user.id)
+              .in('product_id', products.map((p: any) => p.id));
 
-          const likedIds = new Set(likedData?.map(l => l.product_id) || []);
-          products = products.map((p: any) => ({ 
-            ...p, 
-            is_liked: likedIds.has(p.id),
-            brand: p.brand || { id: null, name: 'Unknown', slug: '' },
-          }));
+            const likedIds = new Set(likedData?.map(l => l.product_id) || []);
+            products = products.map((p: any) => ({ 
+              ...p, 
+              is_liked: likedIds.has(p.id),
+              brand: p.brand || { id: null, name: 'Unknown', slug: '' },
+            }));
+          }
         }
 
         if (!reset) {
@@ -479,16 +462,7 @@ export default function SearchScreen() {
         }
         setMostLikedHasMore(products.length === PRODUCTS_PER_PAGE);
 
-        // Record impressions for most liked products
-        if (user && products.length > 0) {
-          const productIds = products.map((p: any) => p.id);
-          supabase.rpc('record_product_impressions', {
-            p_user_id: user.id,
-            p_product_ids: productIds,
-          }).then(({ error }) => {
-            if (error) console.log('Most liked impression tracking skipped:', error.message);
-          });
-        }
+        // NOTE: no impression recording in the search tab (see for_you branch)
       }
     } catch (err) {
       console.error('Error fetching products:', err);
