@@ -221,8 +221,8 @@ async function getCategoryIds(categoryNames) {
  * Checks both external_id AND name to prevent duplicates
  * Note: Using fallback directly since RPC function has type compatibility issues with text[] columns
  */
-async function upsertProduct(productData, categoryIds) {
-  return await upsertProductFallback(productData, categoryIds);
+async function upsertProduct(productData, categoryIds, options = {}) {
+  return await upsertProductFallback(productData, categoryIds, options);
 }
 
 /**
@@ -230,7 +230,7 @@ async function upsertProduct(productData, categoryIds) {
  * Checks both external_id AND name to prevent duplicates
  * Handles duplicate key errors by retrying as update
  */
-async function upsertProductFallback(productData, categoryIds) {
+async function upsertProductFallback(productData, categoryIds, options = {}) {
   // First, try to find existing product by brand_id + external_id
   let existing = null;
   const { data: byExternalId } = await supabase
@@ -256,6 +256,14 @@ async function upsertProductFallback(productData, categoryIds) {
   
   let productId;
   let isNew = false;
+  
+  // skipInsert: product has no usable price. Updating an existing row is fine
+  // (price fields were stripped, existing price preserved), but inserting a
+  // brand-new product with no price would show $0 in the app.
+  if (!existing && options.skipInsert) {
+    console.log(`  ⚠️  Skipping new product with no price: ${productData.name}`);
+    return { success: false, isNew: true };
+  }
   
   if (existing) {
     // Update existing product
@@ -508,7 +516,18 @@ async function syncBrandProducts(brandSlug) {
       
       // Transform product data
       const productData = transformApifyProduct(apifyProduct, brand.id);
-      
+
+      // PRICE GUARD: scrapers sometimes return null prices (e.g. ASOS July 2026
+      // incident: offers.price = null on 94% of items after a TIMED-OUT run).
+      // Never write a 0/absent price — it would overwrite good data in the DB.
+      // For updates: drop price fields so the existing price is preserved.
+      // For inserts: there is no known price, so skip the product entirely.
+      if (!productData.price || productData.price <= 0) {
+        delete productData.price;
+        delete productData.sale_price;
+        productData._skipInsert = true;
+      }
+
       // Validate image URL - skip blob: URLs (invalid browser-generated URLs)
       if (!productData.image_url || productData.image_url.startsWith('blob:')) {
         console.log(`  ⚠️  Skipping "${productData.name}" - invalid image URL (blob)`);
@@ -531,7 +550,9 @@ async function syncBrandProducts(brandSlug) {
       const categoryIds = await getCategoryIds(sourceCats);
       
       // Upsert product
-      const result = await upsertProduct(productData, categoryIds);
+      const skipInsert = productData._skipInsert === true;
+      delete productData._skipInsert;
+      const result = await upsertProduct(productData, categoryIds, { skipInsert });
       
       if (result.success) {
         if (result.isNew) {

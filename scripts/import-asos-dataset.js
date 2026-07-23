@@ -80,6 +80,14 @@ async function importDataset() {
         const taxonomyData = classifyProduct(productData);
         Object.assign(productData, taxonomyData);
 
+        // PRICE GUARD: never write 0/null prices (see sync-products-from-apify.js).
+        // Updates preserve the existing price; new products without a price are skipped.
+        const hasPrice = productData.price && productData.price > 0;
+        if (!hasPrice) {
+          delete productData.price;
+          delete productData.sale_price;
+        }
+
         // Check if product already exists
         const { data: existing } = await supabase
           .from('products')
@@ -87,6 +95,12 @@ async function importDataset() {
           .eq('brand_id', brand.id)
           .eq('external_id', productData.external_id)
           .single();
+
+        if (!existing && !hasPrice) {
+          console.log(`  ⚠️  Skipping new product with no price: ${productData.name}`);
+          failed++;
+          continue;
+        }
 
         if (existing) {
           // Update existing product
